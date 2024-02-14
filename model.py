@@ -27,7 +27,7 @@ from datacollection import model_vars, agent_vars
 # -- INITIALIZE REGION SIZES -- #
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 5000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 20000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
                         ConsumptionGoodFirm: 200,
                         ServiceFirm: 300}}
@@ -255,7 +255,27 @@ class CRAB_Model(Model):
             self.governments[region].bailout_cost = 0
             for firm in self.firms_to_remove[region]:
                 self.remove_firm(firm)
+
+                """FOR TESTING, TODO: REMOVE LATER! """
+                self.governments[region].bailout_cost = 0
+                firm_type = type(firm)
+                new_firm = self.add_firm(firm_type, firm.region,
+                                         market_share=1/N_FIRMS[region][firm_type],
+                                         net_worth=INIT_NET_WORTH[firm_type],
+                                         init_n_machines=INIT_N_MACHINES[firm_type],
+                                         init_cap_amount=INIT_CAP_AMOUNT[firm_type])
+                new_firm.supplier = self.rng.choice(self.get_firms_by_type(CapitalFirm, firm.region))
+                new_firm.offers[new_firm.supplier] = new_firm.supplier.brochure
+                new_firm.supplier.clients.append(new_firm)
+
             self.firms_to_remove[region] = []
+
+            # TODO: BRING BACK!
+            # # -- CREATE FIRM SUBSIDIARIES -- #
+            # self.governments[region].new_firms_resources = 0
+            # for firm in self.firm_subsidiaries[region]:
+            #     self.add_subsidiary(firm)
+            # self.firm_subsidiaries[region] = []
 
         # -- OUTPUT COLLECTION -- #
         self.datacollector.collect(self)

@@ -26,10 +26,10 @@ from CRAB_agents import *
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
-DEMAND_ROW = 300
+DEMAND_ROW = 0              # TESTING, TODO: set back to 300!
 FRAC_CONS_IN_GOODS = 0.3
-FRAC_EXP = 0.1              # Multiplication factor for export each timestep
-FRAC_EXP_INIT = 0.15        # Fraction of regional consumption for initial export d
+FRAC_EXP = 0                # TESTING, TODO: set back to 0.1! Multiplication factor for export each timestep
+FRAC_EXP_INIT = 0.15        # TESTING, TODO: set back to 0.15! Fraction of regional consumption for initial export d
 
 
 # -- HELPER FUNCTIONS -- #
@@ -135,10 +135,11 @@ class Government(Agent):
         # Set unemployement subsidy to fraction of minimum wage
         self.unempl_subsidy = round(max(0.1, self.min_wage * unempl_subsidy_frac), 3)
 
-        # At beginning: keep minimum wage and unemployment subsidy constant
-        if self.model.schedule.time < 10:
-            self.unempl_subsidy = 1
-            self.min_wage = 1
+        # TESTING, TODO: BRING BACK!
+        # # At beginning: keep minimum wage and unemployment subsidy constant
+        # if self.model.schedule.time < 10:
+        #     self.unempl_subsidy = 1
+        #     self.min_wage = 1
 
     def get_best_cap(self) -> CapitalFirm:
         """Get CapitalFirm with best productivity/price ratio. """

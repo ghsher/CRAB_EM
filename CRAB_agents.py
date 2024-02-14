@@ -696,7 +696,7 @@ class CapitalFirm(Firm):
 
         # CapitalFirms-specific: update production cost + price and advertise
         self.update_prod_cost()
-        self.update_price()
+        self.update_price(markup=0.2)  # TESTING, TODO: remove later
         self.advertise()
 
     def stage2(self) -> None:
@@ -855,6 +855,7 @@ class ConsumptionFirm(Firm):
                                              self.market_share_history[-2])), 5)))
             else:
                 self.markup = 0.4
+        self.markup = 0.2  # TESTING, TODO: remove later
 
         # Adjust price based on new cost and markup, bounded between
         # 0.7 and 1.3 times the old price to avoid large oscillations
