@@ -257,7 +257,6 @@ class CRAB_Model(Model):
                 self.remove_firm(firm)
 
                 """FOR TESTING, TODO: REMOVE LATER! """
-                self.governments[region].bailout_cost = 0
                 firm_type = type(firm)
                 new_firm = self.add_firm(firm_type, firm.region,
                                          market_share=1/N_FIRMS[region][firm_type],
@@ -267,6 +266,7 @@ class CRAB_Model(Model):
                 new_firm.supplier = self.rng.choice(self.get_firms_by_type(CapitalFirm, firm.region))
                 new_firm.offers[new_firm.supplier] = new_firm.supplier.brochure
                 new_firm.supplier.clients.append(new_firm)
+                self.governments[region].bailout_cost = 0
 
             self.firms_to_remove[region] = []
 

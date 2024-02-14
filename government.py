@@ -29,7 +29,7 @@ TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # TESTING, TODO: set back to 300!
 FRAC_CONS_IN_GOODS = 0.3
 FRAC_EXP = 0                # TESTING, TODO: set back to 0.1! Multiplication factor for export each timestep
-FRAC_EXP_INIT = 0.15        # TESTING, TODO: set back to 0.15! Fraction of regional consumption for initial export d
+FRAC_EXP_INIT = 0        # TESTING, TODO: set back to 0.15! Fraction of regional consumption for initial export d
 
 
 # -- HELPER FUNCTIONS -- #
