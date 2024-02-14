@@ -1,0 +1,5 @@
+jupyter==1.0.0
+matplotlib==3.8.2
+Mesa==2.1.2
+numpy==1.26.3
+scipy==1.8.0
