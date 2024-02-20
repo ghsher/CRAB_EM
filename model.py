@@ -9,6 +9,7 @@ The model class for the Climate-economy Regional Agent-Based (CRAB) model).
 This class is based on the MESA Model class.
 
 """
+
 import itertools
 import numpy as np
 
@@ -27,7 +28,7 @@ from datacollection import model_vars, agent_vars
 # -- INITIALIZE REGION SIZES -- #
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 5000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 20000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
                         ConsumptionGoodFirm: 200,
                         ServiceFirm: 300}}
@@ -54,10 +55,8 @@ class CRAB_Model(Model):
         """
         super().__init__()
 
-        # --- REGULATE STOCHASTICITY --- #
-        # Regulate stochasticity with numpy random generators
-        self.rng = np.random.default_rng(random_seed)
-        # ------------------------------
+        # -- SAVE NUMBER OF REGIONS -- #
+        self.n_regions = N_REGIONS
 
         # -- INITIALIZE SCHEDULER -- #
         # Initialize StagedActivation scheduler
@@ -65,8 +64,14 @@ class CRAB_Model(Model):
                   "stage5", "stage6", "stage7", "stage8"]
         self.schedule = StagedActivationByType(self, stage_list=stages)
 
-        # -- SAVE NUMBER OF REGIONS -- #
-        self.n_regions = N_REGIONS
+        # --- REGULATE STOCHASTICITY --- #
+        # Regulate stochasticity with numpy random generator for each agent type and region
+        self.RNGs = {}  
+        # Create random generator per region per agent type
+        agent_types = list(N_FIRMS[0].keys()) + [Household] + [Government]
+        for i, agent_class in enumerate(agent_types):
+            self.RNGs[agent_class] = np.random.default_rng(random_seed + i)
+        # ------------------------------
 
         # -- INITIALIZE AGENTS -- #
         self.governments = defaultdict(list)
@@ -98,8 +103,8 @@ class CRAB_Model(Model):
             # NOTE: assumes suppliers within same region.
             cap_firms = self.get_firms_by_type(CapitalFirm, region)
             for firm in cap_firms:
-                # Get supplier (exclude firm itself)
-                firm.supplier = self.rng.choice(cap_firms)
+                # Get supplier
+                firm.supplier = self.RNGs[type(firm)].choice(cap_firms)
                 # Append brochure to offers
                 firm.offers = {firm.supplier: firm.supplier.brochure}
                 # Also keep track of clients on supplier side
@@ -108,6 +113,8 @@ class CRAB_Model(Model):
         # -- FIRM EVOLUTION ATTRIBUTES (per region) -- #
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
+        self.machine_dead = 0    # TODO: remove this
+        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE
 
         # -- DATACOLLECTION -- #
         self.datacollector = DataCollector(model_reporters=model_vars,
@@ -148,17 +155,20 @@ class CRAB_Model(Model):
         gov = self.governments[firm.region]
 
         # Initialize net worth as fraction of average net worth
-        fraction_wealth = (0.9 - 0.1) * self.rng.uniform() + 0.1
+        fraction_wealth = (0.9 - 0.1) * self.RNGs[type(firm)].uniform() + 0.1
         net_worth = max(gov.avg_net_worth, 1) * fraction_wealth
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
+        # Get best regional capital firm (and its brochure)
+        best_cap = gov.get_best_cap()
+        brochure = best_cap.brochure
         
         if isinstance(firm, CapitalFirm):
             # Initialize productivity as fraction of regional top productivity
             x_low, x_up, a, b = (-0.075, 0.075, 2, 4)
-            fraction_prod = 1 + x_low + self.rng.beta(a, b) * (x_up - x_low)
+            fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
             my_prod = np.around(gov.top_prod * fraction_prod, 3)
-            prod = [my_prod, brochure[0]]
+            prod = [my_prod, brochure["prod"]]
             # Initialize market share as fraction of total at beginning
             market_share = 1 / N_FIRMS[firm.region][CapitalFirm]
             # Create new firm
@@ -167,26 +177,24 @@ class CRAB_Model(Model):
                              init_n_machines=1, init_cap_amount=capital_amount,
                              sales=capital_amount, wage=firm.wage, price=firm.price,
                              prod=prod, lifetime=0)
-
         elif isinstance(firm, ConsumptionFirm):
             # Initialze competitiveness and net_worth from regional averages
-            competitiveness = gov.avg_comp_norm[type(firm)]
             # Initialize productivity as productivity of best supplier
-            prod = [brochure[0], brochure[0]]
+            prod = [brochure["prod"], brochure["prod"]]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region, market_share=0,
-                             net_worth=net_worth, competitiveness=competitiveness,
                              init_n_machines=1, init_cap_amount=capital_amount,
+                             net_worth=net_worth,
                              sales=0, wage=firm.wage, price=firm.price, prod=prod,
-                             lifetime=0
-                             )
-
+                             lifetime=0)
+            sub.competitiveness = gov.avg_comp_norm[type(firm)]
         else:
             raise ValueError("Firm type not recognized in function add_subsidiary().")
 
         # Set supplier to best regional capital firm
-        sub.supplier = gov.get_best_cap()
-        sub.offers = {sub.supplier: supplier.brochure}
+        sub.supplier = best_cap
+        sub.offers = {sub.supplier: sub.supplier.brochure}
+        sub.supplier.clients.append(sub)
 
         # Add subsidiary to firms list and schedule
         self.firms[sub.region][type(sub)].append(sub)
@@ -252,10 +260,28 @@ class CRAB_Model(Model):
 
         for region in REGIONS:
             # -- REMOVE BANKRUPT FIRMS -- #
-            self.governments[region].bailout_cost = 0
             for firm in self.firms_to_remove[region]:
                 self.remove_firm(firm)
+
+                """FOR TESTING, TODO: REMOVE LATER! """
+                firm_type = type(firm)
+                new_firm = self.add_subsidiary(firm)
+            self.governments[region].bailout_cost = 0
+            self.governments[region].new_firms_resources = 0
             self.firms_to_remove[region] = []
+
+
+            # TODO: BRING BACK!
+            # # -- CREATE FIRM SUBSIDIARIES -- #
+            # self.governments[region].new_firms_resources = 0
+            # for firm in self.firm_subsidiaries[region]:
+            #     self.add_subsidiary(firm)
+            # self.firm_subsidiaries[region] = []
+
 
         # -- OUTPUT COLLECTION -- #
         self.datacollector.collect(self)
+
+        # -- RESET COUNTERS -- #
+        self.machine_dead = 0    # TODO: REMOVE
+        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE

@@ -63,7 +63,7 @@ class StagedActivationByType(StagedActivation):
                 agents = self.agents_by_type[agent_type].copy()
                 # Shuffle agents per type (except for Government)
                 if agent_type != Government:
-                    self.model.rng.shuffle(agents)
+                    self.model.RNGs[agent_type].shuffle(agents)
                     # Sort households by education (highest education first)
                     if agent_type == Household:
                         agents = sorted(agents, key=lambda hh: hh.education,
