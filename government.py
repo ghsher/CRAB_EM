@@ -135,7 +135,6 @@ class Government(Agent):
         # Set unemployement subsidy to fraction of minimum wage
         self.unempl_subsidy = round(max(0.1, self.min_wage * unempl_subsidy_frac), 3)
 
-        # TESTING, TODO: BRING BACK!
         # # At beginning: keep minimum wage and unemployment subsidy constant
         # if self.model.schedule.time < 10:
         #     self.unempl_subsidy = 1
@@ -146,8 +145,9 @@ class Government(Agent):
 
         # Get prod/price ratio for subsample of all CapitalFirms in this region
         cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
-        cap_firms = self.model.rng.choice(cap_firms, len(cap_firms)//3)
-        firm_prod_dict = {firm: firm.prod / firm.price
+        cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
+        # Collect capital firm productivities (of last timestep)
+        firm_prod_dict = {firm: firm.old_prod / firm.price
                           for firm in cap_firms if firm.region == self.region}
         # Return firm with best prod/price ratio
         return max(firm_prod_dict, key=firm_prod_dict.get, default=None)
@@ -190,7 +190,7 @@ class Government(Agent):
         """Get total capital and capital for new firm starting in this sector. """
         
         firms = self.model.get_firms_by_type(firm_type, self.region)
-        fraction = self.model.rng.uniform(0.1, 0.9)
+        fraction = self.model.RNGs[type(self)].uniform(0.1, 0.9)
         total_capital = sum(sum(vintage.amount for vintage in firm.capital_vintage)
                             for firm in firms)
         new_firm_capital = round(min(5, fraction * total_capital / len(firms)), 2)
@@ -201,18 +201,6 @@ class Government(Agent):
 
         # Set minimum wage (and unemployment subsidy)
         self.set_min_wage()
-
-        """ Bring back for datacollection
-        self.fiscal_balance += (self.tax_revenues[0] -
-                                self.unemployment_cost[0] - self.insurance_cost)
-        self.fiscal_balance_net = (self.tax_revenues[0] -
-                                   self.unemployment_cost[0] - self.insurance_cost)
-
-        self.tax_revenues = [0, 0]
-        self.unemployment_cost = [0, 0]
-        self.insurance_cost_track = self.insurance_cost
-        self.insurance_cost = 0
-        """
 
     def stage2(self) -> None:
         pass
@@ -314,8 +302,8 @@ class Government(Agent):
         # Get highest wage in this region (of ConsumptionGood and Service firms)
         self.top_wage = max(firm.wage for firm in
                             self.model.get_cons_firms(self.region))
-        # Get top productivity (of CapitalGood firms)
-        self.top_prod = max(firm.prod for firm in
+        # Get top productivity (of CapitalGood firms in previous timestep)
+        self.top_prod = max(firm.old_prod for firm in
                             self.model.get_firms_by_type(CapitalFirm, self.region))
 
         # Get total capital and capital for firm subsidiaries per sector

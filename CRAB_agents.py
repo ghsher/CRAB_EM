@@ -99,12 +99,12 @@ class Household(CRAB_Agent):
         super().__init__(model, region)
 
         # -- SOCIO-ECONOMIC ATTRIBUTES -- #
-        self.education = self.model.rng.integers(0, 5)
+        self.education = self.model.RNGs[type(self)].integers(0, 5)
 
         # -- FINANCIAL ATTRIBUTES -- #
         self.net_worth = 0
         self.consumption = 1
-        self.house_income_ratio = self.model.rng.uniform(4, 80)
+        self.house_income_ratio = self.model.RNGs[type(self)].uniform(4, 80)
         self.house_value = self.house_income_ratio
 
         # -- LABOR MARKET ATTRIBUTES -- #
@@ -133,7 +133,7 @@ class Household(CRAB_Agent):
             if vacancies:
                 # Get subset of firm vacancies (bounded rationality)
                 N = math.ceil(len(vacancies)/3)
-                subset = self.model.rng.choice(vacancies, N)
+                subset = self.model.RNGs[type(self)].choice(vacancies, N)
                 # Choose firm with highest wage
                 employer = subset[np.argmax([firm.wage for firm in subset])]
                 # Add self to list of employees of this firm
@@ -217,13 +217,13 @@ class Firm(CRAB_Agent):
         # -- LABOR MARKET ATTRIBUTES -- #
         self.employees = []
         self.size = 0
-        self.labor_demand = 0
 
         # -- CAPITAL GOODS MARKET ATTRIBUTES -- #
-        self.wage = wage if wage else model.rng.uniform(low=WAGE_DIST[0],
-                                                        high=WAGE_DIST[1])
-        self.prod = prod if prod else model.rng.uniform(low=PROD_DIST[0],
-                                                        high=PROD_DIST[1])
+        self.wage = wage if wage else model.RNGs[type(self)].uniform(low=WAGE_DIST[0],
+                                                                     high=WAGE_DIST[1])
+        self.prod = prod if prod else model.RNGs[type(self)].uniform(low=PROD_DIST[0],
+                                                                     high=PROD_DIST[1])
+        self.prod = 1  # TODO: TESTING, remove!
         self.old_prod = self.prod
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
@@ -245,6 +245,8 @@ class Firm(CRAB_Agent):
         # -- FLOOD DAMAGE ATTRIBUTES -- #
         self.damage_coeff = 0
 
+        self.diff_machines = 0  # TODO: remove
+
     class Vintage:
         """Class representing a vintage that consists of multiple
            machines of the same age, lifetime and productivity. """
@@ -259,7 +261,7 @@ class Firm(CRAB_Agent):
             self.prod = prod
             self.amount = amount
             self.age = 0
-            self.lifetime = 15 + firm.model.rng.integers(1, 10)
+            self.lifetime = 15 + firm.model.RNGs[type(firm)].integers(0, 10)  # TODO: TESTING, put this back at (15, 10)
 
     def update_capital(self) -> None:
         """Update capital: get ordered machines and remove old machines."""
@@ -290,6 +292,7 @@ class Firm(CRAB_Agent):
             vintage.age += 1
             if vintage.age > vintage.lifetime:
                 self.capital_vintage.remove(vintage)
+                self.model.machine_dead += 1
                 del vintage
         # Reset investment cost
         self.investment_cost = 0
@@ -313,10 +316,11 @@ class Firm(CRAB_Agent):
         # Get desired level of inventories
         des_inv_level = inv_frac * self.real_demand
 
-        # To let model start smoothly: meet desired inventory level and demand
-        if self.model.schedule.time < 10:
-            self.inventories = des_inv_level
-            self.unfilled_demand = 0
+        # TODO: TESTING: BRING BACK?
+        # # To let model start smoothly: meet desired inventory level and demand
+        # if self.model.schedule.time < 10:
+        #     self.inventories = des_inv_level
+        #     self.unfilled_demand = 0
 
         # Get desired production from inventory levels and demand
         desired_prod = max(0, self.real_demand + des_inv_level - self.inventories)
@@ -324,12 +328,12 @@ class Firm(CRAB_Agent):
         # Bound desired production to maximum production
         prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
                       self.cap_out_ratio)
-        self.feasible_prod = math.ceil(min(desired_prod, prod_bound))
+        self.feasible_production = math.ceil(min(desired_prod, prod_bound))
 
         # If capital stock is too low: expand firm (buy more capital)
-        if self.feasible_prod < desired_prod:
-            n_expansion = (math.ceil(desired_prod - self.feasible_prod) *
-                           self.cap_out_ratio)
+        if self.feasible_production < desired_prod:
+            n_expansion = (math.ceil((desired_prod - self.feasible_production) *
+                           self.cap_out_ratio))
         else:
             n_expansion = 0
         return n_expansion
@@ -351,7 +355,7 @@ class Firm(CRAB_Agent):
         else:
             # If there are no offers: pick random capital firm as supplier
             cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
-            supplier = self.model.rng.choice(cap_firms)
+            supplier = self.model.RNGs[type(self)].choice(cap_firms)
             supplier.clients.append(self)
             if supplier.region == self.region:
                 new_prod, new_price = supplier.brochure.values()
@@ -385,12 +389,23 @@ class Firm(CRAB_Agent):
                       for brochure in self.offers.values()]
             # Get normalized cumulative sum of all offer ratios
             sup_prob = np.cumsum(ratios)/np.cumsum(ratios)[-1]
-            j = bisect.bisect_right(sup_prob, self.model.rng.uniform(0, 1))
+            j = bisect.bisect_right(sup_prob, self.model.RNGs[type(self)].uniform(0, 1))
+            
+            if self.supplier:
+                old_supplier = self.supplier  # TODO: TESTING, REMOVE LATER
+            else:
+                old_supplier = list(self.offers.keys())[j]
+
             self.supplier = list(self.offers.keys())[j]
+
+            # TODO: REMOVE LATER:
+            if self.supplier.unique_id != old_supplier.unique_id:
+                self.model.changed_supplier[type(self)] += 1
+            # --------
         else:
             # No offers? Pick random capital good firm as supplier
             cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
-            self.supplier = self.model.rng.choice(cap_firms)
+            self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
 
             # Add this firm to supplier client list (if it is not already)
             if self not in self.supplier.clients:
@@ -399,6 +414,7 @@ class Firm(CRAB_Agent):
 
         # Limit desired amount of machines to what firm can afford
         n_desired = n_expansion + n_replacements
+        self.n_desired = n_desired  # TODO: remove this
         n_affordable = max(0, self.net_worth // self.supplier.price)
         n_to_buy = min(n_desired, n_affordable)
 
@@ -415,12 +431,13 @@ class Firm(CRAB_Agent):
                 self.credit_rationed = True
 
         n_ordered = int(np.ceil(n_to_buy))
-
         if n_ordered > 0:
             # Convert quantity into cost
             self.investment_cost = n_ordered * self.supplier.price
             # Add order to suppliers list
             self.supplier.regional_orders[self] = n_ordered
+            # TODO: TESTING, REMOVE LATER:
+            self.n_ordered = n_ordered
         elif n_ordered == 0:
             # No orders? Remove supplier
             self.supplier = None
@@ -467,7 +484,7 @@ class Firm(CRAB_Agent):
         # Loop through stock backwards (latest machines are most productive)
         for vintage in self.capital_vintage[::-1]:
             # Stop when desired amount is reached
-            if Q < self.feasible_prod:
+            if Q < self.feasible_production:
                 machines_used.append(vintage)
                 Q += vintage.amount
 
@@ -483,9 +500,9 @@ class Firm(CRAB_Agent):
             labor_demand        : Number of employees desired
         """
 
-        if self.feasible_prod > 0:
-            self.old_prod = self.get_avg_prod()
-            labor_demand = max(1, round(self.feasible_prod / self.old_prod))
+        if self.feasible_production > 0:
+            self.prod = self.get_avg_prod()
+            labor_demand = max(1, round(self.feasible_production / self.prod))
         else:
             labor_demand = 1
 
@@ -533,8 +550,7 @@ class Firm(CRAB_Agent):
         if self.desired_employees > self.size:
             self.open_vacancies = True
         # Fire employees if more than desired and profits are low
-        elif ((self.desired_employees < self.size) and
-              (self.profits < self.wage)):
+        elif self.desired_employees < self.size:
             # Fire undesired employees
             n_to_fire = self.size - self.desired_employees
             for employee in self.employees[:n_to_fire]:
@@ -604,7 +620,7 @@ class CapitalFirm(Firm):
 
     def update_prod_cost(self) -> None:
       """Computes the unit cost of production for this firm. """
-      self.cost = self.wage / self.old_prod
+      self.cost = self.wage / self.prod
 
     def update_price(self, markup: float=0.3) -> None:
       """Update firm unit price. """
@@ -625,7 +641,7 @@ class CapitalFirm(Firm):
         else:
             # If no clients yet: sample fixed number of new clients
             N = 10
-        new_clients = self.model.rng.choice(firms, N)
+        new_clients = self.model.RNGs[type(self)].choice(firms, N)
 
         # Add potential clients to own clients, avoid duplicates
         new_clients = new_clients[~np.isin(new_clients, self.clients)]
@@ -646,23 +662,25 @@ class CapitalFirm(Firm):
         """Check if all orders can be satisfied, else: cancel or reduce orders. """
 
         # Check how much demand can be filled with production and inventories
-        production = max(0, round(self.size * self.old_prod))
-        stock_available = production + self.inventories
+        self.production_made = max(0, round(self.size * self.prod))
+        stock_available = self.production_made + self.inventories
         self.demand_filled = min(stock_available, self.real_demand)
 
-        if self.lifetime <= 3:
-            # First two timesteps cancel unfilled demand for smoother start
-            self.unfilled_demand = 0
-            self.inventories = 0
-        else:
-            # Get unfilled demand and update inventories
-            self.unfilled_demand = max(0, self.real_demand - stock_available)
-            self.inventories = max(0, stock_available - self.real_demand)
+        # TODO: TESTING, bring back?
+        # if self.lifetime <= 3:
+        #     # First two timesteps cancel unfilled demand for smoother start
+        #     self.unfilled_demand = 0
+        #     self.inventories = 0
+        # else:
+
+        # Get unfilled demand and update inventories
+        self.unfilled_demand = max(0, self.real_demand - stock_available)
+        self.inventories = max(0, stock_available - self.real_demand)
 
         # If demand cannot be filled: cancel or reduce orders
         if self.demand_filled < self.real_demand:
             orders = list(self.regional_orders.items())
-            self.model.rng.shuffle(orders)
+            self.model.RNGs[type(self)].shuffle(orders)
             amount_to_cancel = self.real_demand - self.demand_filled
 
             # Delete or reduce orders based on amount to cancel
@@ -724,13 +742,12 @@ class CapitalFirm(Firm):
         # Update demand from regional orders
         self.real_demand = sum(self.regional_orders.values())
 
-        self.labor_demand = self.get_labor_demand()
+        labor_demand = self.get_labor_demand()
         # For capital firms: bound labor demand by real demand and productivity
-        self.labor_demand = min(self.labor_demand,
-                                round(self.real_demand / self.old_prod))
+        labor_demand = min(labor_demand, round(self.real_demand / self.prod))
 
         # Open vacancies and fire employees
-        self.hire_and_fire(self.labor_demand)
+        self.hire_and_fire(labor_demand)
 
     def stage4(self) -> None:
         pass
@@ -801,7 +818,7 @@ class ConsumptionFirm(Firm):
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         # Randomly pick an initial supplier from all CapitalFirms
         cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
-        self.supplier = self.model.rng.choice(cap_firms)
+        self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
         self.offers = {self.supplier: self.supplier.brochure}
         self.supplier.clients.append(self)
 
@@ -835,26 +852,28 @@ class ConsumptionFirm(Firm):
         """
 
         # Update cost, avoiding division by zero
-        self.cost = self.wage / self.old_prod if (self.old_prod > 0) else self.wage
+        self.cost = self.wage / self.prod if (self.prod > 0) else self.wage
 
-        # Keep markup fixed for the first 10 timesteps (for smooth start)
-        if self.lifetime <= 10:
-            if type(self) == ConsumptionGoodFirm:
-                self.markup = 0.275
-            elif type(self) == ServiceFirm:
-                self.markup = 0.25
-            else:
-                raise ValueError("Compete and sell function can only be \
-                                  called on ConsumptionFirm objects.")
-        else:
-            # Compute (bounded) markup from market share history
-            if self.market_share_history[-2] > 0:
-                self.markup = max(0.01, min(0.4, round(self.markup *
-                                  (1 + v * ((self.market_share_history[-1] -
-                                             self.market_share_history[-2]) /
-                                             self.market_share_history[-2])), 5)))
-            else:
-                self.markup = 0.4
+        # TODO: TESTING, bring back?
+        # # Keep markup fixed for the first 10 timesteps (for smooth start)
+        # if self.lifetime <= 10:
+        #     if type(self) == ConsumptionGoodFirm:
+        #         self.markup = 0.275
+        #     elif type(self) == ServiceFirm:
+        #         self.markup = 0.25
+        #     else:
+        #         raise ValueError("Compete and sell function can only be \
+        #                           called on ConsumptionFirm objects.")
+        # else:
+            # # Compute (bounded) markup from market share history
+            # if self.market_share_history[-2] > 0:
+            #     self.markup = max(0.01, min(0.4, round(self.markup *
+            #                       (1 + v * ((self.market_share_history[-1] -
+            #                                  self.market_share_history[-2]) /
+            #                                  self.market_share_history[-2])), 5)))
+            # else:
+            #     self.markup = 0.4
+
         self.markup = 0.2  # TESTING, TODO: remove later
 
         # Adjust price based on new cost and markup, bounded between
@@ -869,7 +888,6 @@ class ConsumptionFirm(Firm):
         Args:
             chi                 : Scaling factor for level of competitiveness
         """
-
         if self.lifetime == 0:
             # Initial market shares for newly created firms
             cap_amount = sum(vintage.amount for vintage in self.capital_vintage)
@@ -914,9 +932,9 @@ class ConsumptionFirm(Firm):
 
         super().stage3()
         # Save old production
-        self.prod = self.old_prod
-        self.labor_demand = self.get_labor_demand()
-        self.hire_and_fire(self.labor_demand)
+        self.old_prod = self.prod
+        labor_demand = self.get_labor_demand()
+        self.hire_and_fire(labor_demand)
 
     def stage4(self) -> None:
         """Fourth stage of consumption firm step function. """
@@ -965,18 +983,18 @@ class ConsumptionFirm(Firm):
         self.real_demand = np.round(sum([gov.regional_demands[type(self)],
                                          gov.export_demands[type(self)]] 
                                         * self.market_share) / self.price, 3)
-
         # Check available stock
-        self.production_made = self.size * self.old_prod
+        self.production_made = self.size * self.prod
         stock_available = self.production_made + self.inventories
         # Get filled and unfilled demand and update inventories
         self.demand_filled = min(stock_available, self.real_demand)
-        if self.lifetime <= 3:
-            self.unfilled_demand = 0
-            self.inventories = 0
-        else:
-            self.unfilled_demand = max(0, self.real_demand - stock_available)
-            self.inventories = max(0, stock_available - self.real_demand)
+        # TODO: TESTING, bring back?
+        # if self.lifetime <= 3:
+        #     self.unfilled_demand = 0
+        #     self.inventories = 0
+        # else:
+        self.unfilled_demand = max(0, self.real_demand - stock_available)
+        self.inventories = max(0, stock_available - self.real_demand)
 
         # -- ACCOUNTING -- #
         # If order is canceled: reset order and investment cost
