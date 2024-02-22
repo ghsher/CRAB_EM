@@ -28,7 +28,7 @@ from datacollection import model_vars, agent_vars
 # -- INITIALIZE REGION SIZES -- #
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 20000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 5000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
                         ConsumptionGoodFirm: 200,
                         ServiceFirm: 300}}
@@ -113,8 +113,6 @@ class CRAB_Model(Model):
         # -- FIRM EVOLUTION ATTRIBUTES (per region) -- #
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
-        self.machine_dead = 0    # TODO: remove this
-        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE
 
         # -- DATACOLLECTION -- #
         self.datacollector = DataCollector(model_reporters=model_vars,
@@ -167,8 +165,9 @@ class CRAB_Model(Model):
             # Initialize productivity as fraction of regional top productivity
             x_low, x_up, a, b = (-0.075, 0.075, 2, 4)
             fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
-            my_prod = np.around(gov.top_prod * fraction_prod, 3)
-            prod = [my_prod, brochure["prod"]]
+            old_prod = np.around(gov.top_prod * fraction_prod, 3)
+            prod = brochure["prod"]
+            print(old_prod, prod)
             # Initialize market share as fraction of total at beginning
             market_share = 1 / N_FIRMS[firm.region][CapitalFirm]
             # Create new firm
@@ -176,11 +175,11 @@ class CRAB_Model(Model):
                              market_share=market_share, net_worth=net_worth,
                              init_n_machines=1, init_cap_amount=capital_amount,
                              sales=capital_amount, wage=firm.wage, price=firm.price,
-                             prod=prod, lifetime=0)
+                             prod=prod, old_prod=old_prod, lifetime=0)
         elif isinstance(firm, ConsumptionFirm):
             # Initialze competitiveness and net_worth from regional averages
             # Initialize productivity as productivity of best supplier
-            prod = [brochure["prod"], brochure["prod"]]
+            prod = brochure["prod"]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region, market_share=0,
                              init_n_machines=1, init_cap_amount=capital_amount,
@@ -263,25 +262,13 @@ class CRAB_Model(Model):
             for firm in self.firms_to_remove[region]:
                 self.remove_firm(firm)
 
-                """FOR TESTING, TODO: REMOVE LATER! """
+                # Create new firms as subsidiaries of bankrupt firms
                 firm_type = type(firm)
                 new_firm = self.add_subsidiary(firm)
             self.governments[region].bailout_cost = 0
             self.governments[region].new_firms_resources = 0
+
             self.firms_to_remove[region] = []
-
-
-            # TODO: BRING BACK!
-            # # -- CREATE FIRM SUBSIDIARIES -- #
-            # self.governments[region].new_firms_resources = 0
-            # for firm in self.firm_subsidiaries[region]:
-            #     self.add_subsidiary(firm)
-            # self.firm_subsidiaries[region] = []
-
 
         # -- OUTPUT COLLECTION -- #
         self.datacollector.collect(self)
-
-        # -- RESET COUNTERS -- #
-        self.machine_dead = 0    # TODO: REMOVE
-        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE

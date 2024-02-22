@@ -26,10 +26,10 @@ from CRAB_agents import *
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
-DEMAND_ROW = 0              # TESTING, TODO: set back to 300!
+DEMAND_ROW = 0              # NOTE: TESTING! Export turned off
 FRAC_CONS_IN_GOODS = 0.3
-FRAC_EXP = 0                # TESTING, TODO: set back to 0.1! Multiplication factor for export each timestep
-FRAC_EXP_INIT = 0        # TESTING, TODO: set back to 0.15! Fraction of regional consumption for initial export d
+FRAC_EXP = 0                # Multiplication factor for export each timestep
+FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
 
 
 # -- HELPER FUNCTIONS -- #
@@ -131,7 +131,7 @@ class Government(Agent):
         """Sets minimum wages and unemployment subsidy. """
 
         # Set minimum wage to fraction of average wage
-        self.min_wage = max(0.1, self.avg_wage * min_wage_frac)
+        self.min_wage = max(0.1, round(self.avg_wage, 2) * min_wage_frac)
         # Set unemployement subsidy to fraction of minimum wage
         self.unempl_subsidy = round(max(0.1, self.min_wage * unempl_subsidy_frac), 3)
 
@@ -244,8 +244,8 @@ class Government(Agent):
 
         # Get regional average wages and unemployment rate
         firms = self.model.get_firms(self.region)
-        self.avg_wage = round(sum(firm.wage * firm.size for firm in firms)
-                              / sum(firm.size for firm in firms), 2)
+        self.avg_wage = (sum(firm.wage * firm.size for firm in firms) /
+                         sum(firm.size for firm in firms))
         households = self.model.get_households(self.region)
         unemployment = sum(1 for hh in households if hh.employer is None)
         self.unemployment_rate = round(max(1, unemployment) /
