@@ -15,42 +15,63 @@ from CRAB_agents import *
 REGION = 0
 
 model_vars = {
-			  "n_agents": 
+			"n_agents": 
 			  		lambda m: m.schedule.get_agent_count(),
-			  "n_households": 
+			"n_households": 
 			  		lambda m: len(m.get_households(REGION)),
-			  "n_cap_firms": 
+			"n_cap_firms": 
 		  			lambda m: len(m.get_firms_by_type(CapitalFirm, REGION)),
-			  "n_cons_firms": 
-			  		lambda m: len(m.get_firms_by_type(ConsumptionGoodFirm, REGION)),
-			  "n_serv_firms": 
-			  		lambda m: len(m.get_firms_by_type(ServiceFirm, REGION)),
-			  "HH consumption": 
+			"n_agr_firms": 
+			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
+			"n_ind_firms": 
+			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
+            "n_cons_firms": 
+		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
+			"n_trans_firms": 
+			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
+			"n_inf_firms": 
+			  		lambda m: len(m.get_firms_by_type(Information, REGION)),
+			"n_fin_firms": 
+			  		lambda m: len(m.get_firms_by_type(Finance, REGION)),
+			"n_rec_firms": 
+			  		lambda m: len(m.get_firms_by_type(Recreation, REGION)),
+                
+			"HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			  "Regional demand":
+			"Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
-			  "Export demand": 
+			"Export demand": 
 			  		lambda m: sum(m.governments[REGION].export_demands.values()),
 			  # "Bailout cost":
 			  # 		lambda m: m.governments[REGION].bailout_cost,
 			  # "New firms resources":
 			  # 		lambda m: m.governments[REGION].new_firms_resources,
-			  "Unemployment rate":
+			"Unemployment rate":
 			  		lambda m: m.governments[REGION].unemployment_rate,
-			  "Min wage":
+			"Min wage":
 			  		lambda m: m.governments[REGION].min_wage,
-			  "Avg wage":
+			"Avg wage":
 			  		lambda m: m.governments[REGION].avg_wage,
-	  		  "Frac machines dead":
+	  		"Frac machines dead":
 	  		  		lambda m: m.machine_dead/sum(len(firm.capital_vintage)
                                     			 for firm in m.get_firms(0)),
-	  		  "Changed supplier cap":
+	  		"Changed supplier cap":
 	  		  		lambda m: m.changed_supplier[CapitalFirm],
-  		  	  "Changed supplier cons":
-	  		  		lambda m: m.changed_supplier[ConsumptionGoodFirm],
-	  		  "Changed supplier serv":
-	  		  		lambda m: m.changed_supplier[ServiceFirm],
-			  }
+  		  	"Changed supplier agr":
+	  		  		lambda m: m.changed_supplier[Agriculture],
+	  		"Changed supplier ind":
+	  		  		lambda m: m.changed_supplier[Industry],
+			"Changed supplier cons":
+					lambda m: m.changed_supplier[Construction],
+			"Changed supplier trans":
+					lambda m: m.changed_supplier[Transport],
+			"Changed supplier inf":
+					lambda m: m.changed_supplier[Information],
+			"Changed supplier fin":
+					lambda m: m.changed_supplier[Finance],
+			"Changed supplier rec":		
+					lambda m: m.changed_supplier[Recreation]
+}
 
 agent_vars = {"Type":
 					lambda a: type(a),

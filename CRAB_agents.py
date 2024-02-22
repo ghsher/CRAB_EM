@@ -198,6 +198,7 @@ class Firm(CRAB_Agent):
 
     def __init__(self, model: CRAB_Model, region: int, market_share: float,
                  net_worth: int, init_n_machines: int, init_cap_amount: int,
+                cap_out_ratio: float, markup: float,
                  sales: int=10, wage: float=None, price: float=None,
                  prod: list=None, lifetime: int=1) -> None:
         """Initialize firm agent.
@@ -212,6 +213,8 @@ class Firm(CRAB_Agent):
         # -- GENERAL FIRM ATTRIBUTES -- #
         self.lifetime = lifetime
         self.net_worth = net_worth
+        self.cap_out_ratio = cap_out_ratio
+        self.markup = markup
         self.subsidiary_counter = 0
         
         # -- LABOR MARKET ATTRIBUTES -- #
@@ -866,15 +869,14 @@ class ConsumptionFirm(Firm):
         #                           called on ConsumptionFirm objects.")
         # else:
             # # Compute (bounded) markup from market share history
-            # if self.market_share_history[-2] > 0:
-            #     self.markup = max(0.01, min(0.4, round(self.markup *
-            #                       (1 + v * ((self.market_share_history[-1] -
-            #                                  self.market_share_history[-2]) /
-            #                                  self.market_share_history[-2])), 5)))
-            # else:
+        if len(self.market_share_history) > 1:
+            prev_market_share = self.market_share_history[-2]
+            if prev_market_share > 0:
+                market_share_change = (self.market_share_history[-1] - prev_market_share) / prev_market_share
+                self.markup = max(0.01, min(0.4, round(self.markup * (1 + v * market_share_change), 5)))
             #     self.markup = 0.4
 
-        self.markup = 0.2  # TESTING, TODO: remove later
+        #self.markup = 0.2  # TESTING, TODO: remove later
 
         # Adjust price based on new cost and markup, bounded between
         # 0.7 and 1.3 times the old price to avoid large oscillations
@@ -1035,7 +1037,7 @@ class ConsumptionFirm(Firm):
         super().stage8()
 
 
-class ConsumptionGoodFirm(ConsumptionFirm):
+class Agriculture(ConsumptionFirm):
     """Class representing a Consumption Goods firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1044,10 +1046,10 @@ class ConsumptionGoodFirm(ConsumptionFirm):
         super().__init__(**kwargs)
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        self.cap_out_ratio = 1.5  # Capital output ratio
+        #self.cap_out_ratio = 1.5  # Capital output ratio
 
 
-class ServiceFirm(ConsumptionFirm):
+class Industry(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1056,4 +1058,57 @@ class ServiceFirm(ConsumptionFirm):
         super().__init__(**kwargs)
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        self.cap_out_ratio = 2  # Capital output ratio
+        #self.cap_out_ratio = 2  # Capital output ratio
+
+class Construction(ConsumptionFirm):
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
+        #self.cap_out_ratio = 2  # Capital output ratio
+
+class Transport(ConsumptionFirm):
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
+        #self.cap_out_ratio = 2  # Capital output ratio
+class Information(ConsumptionFirm):
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
+        #self.cap_out_ratio = 2  # Capital output ratio
+class Finance(ConsumptionFirm):
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
+        #self.cap_out_ratio = 2  # Capital output ratio
+
+class Recreation(ConsumptionFirm):
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
+        #self.cap_out_ratio = 2  # Capital output ratio

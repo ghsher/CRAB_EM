@@ -27,10 +27,25 @@ from CRAB_agents import *
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # TESTING, TODO: set back to 300!
-FRAC_CONS_IN_GOODS = 0.3
+FRAC_CONS_IND= 0.2
+FRAC_CONS_TRANS = 0.2
+FRAC_CONS_CONS = 0.15
+FRAC_CONS_INFO = 0.1
+FRAC_CONS_FIN = 0.1
+FRAC_CONS_REC = 0.1
+FRAC_CONS_AGR = 0.15
+
 FRAC_EXP = 0                # TESTING, TODO: set back to 0.1! Multiplication factor for export each timestep
 FRAC_EXP_INIT = 0        # TESTING, TODO: set back to 0.15! Fraction of regional consumption for initial export d
 
+FIRMS = [Firm, CapitalFirm, Agriculture, Industry, Construction, Transport,
+              Information, Finance, Recreation]
+
+FIRM_TYPES = [CapitalFirm, Agriculture, Industry, Construction, Transport,
+              Information, Finance, Recreation]
+
+CONS_FIRM_TYPES = [Industry, Agriculture, Construction, Transport,
+              Information, Finance, Recreation]
 
 # -- HELPER FUNCTIONS -- #
 def normalize(firms: list, attribute: str, convert_to_pos=False) -> dict:
@@ -86,6 +101,7 @@ def get_quantiles(firms: list, attribute: str,
     return np.quantile(attr_list, tax_quintiles)
 
 
+
 # -- GOVERNMENT CLASS -- #
 class Government(Agent):
     """Government class for the CRAB Model. """
@@ -99,8 +115,8 @@ class Government(Agent):
         self.region = region
 
         # -- GOODS MARKET ATTRIBUTES -- #
-        self.avg_prod = {k: 1 for k in [Firm, CapitalFirm, ConsumptionGoodFirm, ServiceFirm]}
-        self.prod_increase = {k: 0 for k in [Firm, CapitalFirm, ConsumptionGoodFirm, ServiceFirm]}
+        self.avg_prod = {k: 1 for k in FIRMS}
+        self.prod_increase = {k: 0 for k in FIRMS}
         self.bailout_cost = 0
         self.new_firms_resources = 0
         self.regional_demands = {}
@@ -212,7 +228,7 @@ class Government(Agent):
         """Fourth stage of government step function: normalization. """
         
         # Normalize per sector
-        for firm_type in [ConsumptionGoodFirm, ServiceFirm]:
+        for firm_type in CONS_FIRM_TYPES:
             firms = self.model.get_firms_by_type(firm_type, self.region)
             # Normalize prices
             self.prices_norm[firm_type] = normalize(firms, "price")
@@ -227,7 +243,7 @@ class Government(Agent):
         self.avg_comp_norm = {}
         self.q_sector_sales = {}
         self.q_sector_employment = {}
-        for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
+        for firm_type in FIRM_TYPES:
             # Get all firms of this type
             firms = self.model.get_firms_by_type(firm_type, self.region)
             # For ConsumptionGood and Service firms: compute normalized competitiveness
@@ -265,21 +281,47 @@ class Government(Agent):
             self.demand_RoW = FRAC_EXP_INIT * total_consumption
 
         # Save regional and export demands per consumption sector
-        goods_consumption = FRAC_CONS_IN_GOODS * total_consumption
-        service_consumption = total_consumption - goods_consumption
-        export_demand_cons = self.demand_RoW * FRAC_CONS_IN_GOODS
-        export_demand_serv = self.demand_RoW - export_demand_cons
-        self.regional_demands[ConsumptionGoodFirm] = round(goods_consumption, 3)
-        self.export_demands[ConsumptionGoodFirm] = round(export_demand_cons, 3)
-        self.regional_demands[ServiceFirm] = round(service_consumption, 3)
-        self.export_demands[ServiceFirm] = round(export_demand_serv, 3)
+        agr_consumption =  FRAC_CONS_AGR * total_consumption
+        ind_consumption = FRAC_CONS_IND * total_consumption
+        cons_consumption = FRAC_CONS_CONS * total_consumption
+        trans_consumption = FRAC_CONS_TRANS * total_consumption
+        info_consumption = FRAC_CONS_INFO * total_consumption
+        fin_consumption = FRAC_CONS_FIN * total_consumption
+        rec_consumption = FRAC_CONS_REC * total_consumption
+
+        #service_consumption = total_consumption - goods_consumption
+        export_demand_agr = self.demand_RoW * FRAC_CONS_AGR
+        export_demand_ind = self.demand_RoW * FRAC_CONS_IND
+        export_demand_cons = self.demand_RoW * FRAC_CONS_CONS
+        export_demand_trans = self.demand_RoW * FRAC_CONS_TRANS
+        export_demand_info = self.demand_RoW * FRAC_CONS_INFO
+        export_demand_fin = self.demand_RoW * FRAC_CONS_FIN
+        export_demand_rec = self.demand_RoW * FRAC_CONS_REC
+
+
+    
+        self.regional_demands[Agriculture] = round(agr_consumption, 3)
+        self.export_demands[Agriculture] = round(export_demand_agr, 3)
+        self.regional_demands[Industry] = round(ind_consumption, 3)
+        self.export_demands[Industry] = round(export_demand_ind, 3)
+        self.regional_demands[Construction] = round(cons_consumption, 3)
+        self.export_demands[Construction] = round(export_demand_cons, 3)
+        self.regional_demands[Transport] = round(trans_consumption, 3)
+        self.export_demands[Transport] = round(export_demand_trans, 3)
+        self.regional_demands[Information] = round(info_consumption, 3)
+        self.export_demands[Information] = round(export_demand_info, 3)
+        self.regional_demands[Finance] = round(fin_consumption, 3)
+        self.export_demands[Finance] = round(export_demand_fin, 3)
+        self.regional_demands[Recreation] = round(rec_consumption, 3)
+        self.export_demands[Recreation] = round(export_demand_rec, 3)
+
 
     def stage6(self) -> None:
         """Sixth stage of Government step function. """
 
         # Normalize market shares per region
         self.market_share_norm = {}
-        for firm_type in [ConsumptionGoodFirm, ServiceFirm]:
+        for firm_type in CONS_FIRM_TYPES:
             firms = self.model.get_firms_by_type(firm_type, self.region)
             self.market_share_norm[firm_type] = normalize(firms, "market_share")
 
@@ -287,7 +329,7 @@ class Government(Agent):
         """Seventh stage of Government step function. """
 
         # Update average production (and increase) of all firms and for all sectors
-        for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
+        for firm_type in FIRM_TYPES:
             production = self.get_production(firm_type)
             self.avg_prod[firm_type] = production[0]
             self.prod_increase[firm_type] = production[1]
@@ -307,7 +349,7 @@ class Government(Agent):
                             self.model.get_firms_by_type(CapitalFirm, self.region))
 
         # Get total capital and capital for firm subsidiaries per sector
-        for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
+        for firm_type in FIRM_TYPES:
             capital = self.get_capital(firm_type)
             self.total_capital[firm_type] = capital[0]
             self.capital_new_firm[firm_type] = capital[1]

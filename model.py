@@ -30,19 +30,58 @@ N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
 N_HOUSEHOLDS = {REGIONS[0]: 20000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
-                        ConsumptionGoodFirm: 200,
-                        ServiceFirm: 300}}
+                        Agriculture: 200,
+                        Industry: 300,
+                        Construction: 200,
+                        Transport: 150,
+                        Information: 100,
+                        Finance: 100,
+                        Recreation: 100,
+                        }}
 
 # -- FIRM INITIALIZATION ATTRIBUTES -- #
 INIT_NET_WORTH = {CapitalFirm: 150,         # Initial net worth
-                  ConsumptionGoodFirm: 20,
-                  ServiceFirm: 50}
+                  Agriculture: 20,
+                  Industry: 50,
+                  Construction: 30,
+                  Transport: 25,
+                  Information: 20,
+                  Finance: 20,
+                  Recreation: 20}
+
 INIT_CAP_AMOUNT = {CapitalFirm: 3,          # Initial capital per machine
-                   ConsumptionGoodFirm: 2,
-                   ServiceFirm: 2}
+                   Agriculture: 2,
+                   Industry: 2,
+                   Construction: 2,
+                   Transport: 2,
+                   Information: 2,
+                   Finance: 2,
+                   Recreation: 2}
 INIT_N_MACHINES = {CapitalFirm: 20,         # Initial number of machines
-                   ConsumptionGoodFirm: 10,
-                   ServiceFirm: 15}
+                   Agriculture: 10,
+                   Industry: 15,
+                   Construction: 10,
+                   Transport: 10,
+                   Information: 10,
+                   Finance: 10,
+                   Recreation: 10}
+INIT_KL_RATIO = {CapitalFirm: 2,             # Initial capital-labor ratio
+                    Agriculture: 1.3,
+                    Industry: 1.5,
+                    Construction: 1.1,
+                    Transport: 1.4,
+                    Information: 1.2,
+                    Finance: 0.9,
+                    Recreation: 0.8}
+INIT_MK  = {CapitalFirm: 0.3,                 # Initial markup
+                    Agriculture: 0.2,
+                    Industry: 0.25,
+                    Construction: 0.22,
+                    Transport: 0.26,
+                    Information: 0.2,
+                    Finance: 0.27,
+                    Recreation: 0.21}
+
 
 class CRAB_Model(Model):
     """Model class for the CRAB model. """
@@ -85,10 +124,13 @@ class CRAB_Model(Model):
                 self.firms[region][firm_type] = []
                 for _ in range(N):
                     self.add_firm(firm_type, region=region,
-                                  market_share=1/N_FIRMS[region][firm_type],
-                                  net_worth=INIT_NET_WORTH[firm_type],
-                                  init_n_machines=INIT_N_MACHINES[firm_type],
-                                  init_cap_amount=INIT_CAP_AMOUNT[firm_type])
+                                market_share=1/N_FIRMS[region][firm_type],
+                                net_worth=INIT_NET_WORTH[firm_type],
+                                init_n_machines=INIT_N_MACHINES[firm_type],
+                                init_cap_amount=INIT_CAP_AMOUNT[firm_type],
+                                cap_out_ratio=INIT_KL_RATIO[firm_type],
+                                markup=INIT_MK[firm_type],
+                                 )
             # Create households
             self.households[region] = []
             for _ in range(N_HOUSEHOLDS[region]):
@@ -114,7 +156,9 @@ class CRAB_Model(Model):
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
         self.machine_dead = 0    # TODO: remove this
-        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE
+        self.changed_supplier = {CapitalFirm: 0, Agriculture: 0, Industry: 0, 
+                                 Construction : 0, Transport: 0, Information:0,
+                                Finance:0 , Recreation: 0 }  # TODO: REMOVE
 
         # -- DATACOLLECTION -- #
         self.datacollector = DataCollector(model_reporters=model_vars,
@@ -162,6 +206,7 @@ class CRAB_Model(Model):
         # Get best regional capital firm (and its brochure)
         best_cap = gov.get_best_cap()
         brochure = best_cap.brochure
+        markup = INIT_MK[type(firm)]
         
         if isinstance(firm, CapitalFirm):
             # Initialize productivity as fraction of regional top productivity
@@ -175,6 +220,7 @@ class CRAB_Model(Model):
             sub = type(firm)(model=self, region=firm.region,
                              market_share=market_share, net_worth=net_worth,
                              init_n_machines=1, init_cap_amount=capital_amount,
+                             markup = markup, cap_out_ratio=firm.cap_out_ratio,
                              sales=capital_amount, wage=firm.wage, price=firm.price,
                              prod=prod, lifetime=0)
         elif isinstance(firm, ConsumptionFirm):
@@ -183,10 +229,11 @@ class CRAB_Model(Model):
             prod = [brochure["prod"], brochure["prod"]]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region, market_share=0,
-                             init_n_machines=1, init_cap_amount=capital_amount,
-                             net_worth=net_worth,
-                             sales=0, wage=firm.wage, price=firm.price, prod=prod,
-                             lifetime=0)
+                            init_n_machines=1, init_cap_amount=capital_amount,
+                            net_worth=net_worth,  markup = markup,
+                            cap_out_ratio=firm.cap_out_ratio,
+                            sales=0, wage=firm.wage, price=firm.price, prod=prod,
+                            lifetime=0)
             sub.competitiveness = gov.avg_comp_norm[type(firm)]
         else:
             raise ValueError("Firm type not recognized in function add_subsidiary().")
@@ -228,7 +275,10 @@ class CRAB_Model(Model):
         Returns:
             firms           : List of selected firms
         """
-        firms = self.firms[region][ConsumptionGoodFirm] + self.firms[region][ServiceFirm]
+        firms = self.firms[region][Agriculture] + self.firms[region][Industry] + \
+                self.firms[region][Construction] + self.firms[region][Transport] + \
+                self.firms[region][Information] + self.firms[region][Finance] + \
+                self.firms[region][Recreation]
         return firms
 
     def get_firms_by_type(self, firm_type: type, region: int):
@@ -284,4 +334,5 @@ class CRAB_Model(Model):
 
         # -- RESET COUNTERS -- #
         self.machine_dead = 0    # TODO: REMOVE
-        self.changed_supplier = {CapitalFirm: 0, ConsumptionGoodFirm: 0, ServiceFirm: 0}  # TODO: REMOVE
+        self.changed_supplier = {CapitalFirm: 0, Agriculture: 0,  Industry: 0, Construction: 0, 
+                                 Transport: 0, Information: 0, Finance: 0, Recreation: 0}
