@@ -200,7 +200,7 @@ class Firm(CRAB_Agent):
                  net_worth: int, init_n_machines: int, init_cap_amount: int,
                 cap_out_ratio: float, markup: float,
                  sales: int=10, wage: float=None, price: float=None,
-                 prod: list=None, lifetime: int=1) -> None:
+                 prod: float=None, old_prod: float=None, lifetime: int=1) -> None:
         """Initialize firm agent.
 
         Args:
@@ -224,10 +224,8 @@ class Firm(CRAB_Agent):
         # -- CAPITAL GOODS MARKET ATTRIBUTES -- #
         self.wage = wage if wage else model.RNGs[type(self)].uniform(low=WAGE_DIST[0],
                                                                      high=WAGE_DIST[1])
-        self.prod = prod if prod else model.RNGs[type(self)].uniform(low=PROD_DIST[0],
-                                                                     high=PROD_DIST[1])
-        self.prod = 1  # TODO: TESTING, remove!
-        self.old_prod = self.prod
+        self.prod = 1
+        self.old_prod = old_prod if old_prod else self.prod
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
         self.price = price if price else self.wage/self.prod
@@ -248,8 +246,6 @@ class Firm(CRAB_Agent):
         # -- FLOOD DAMAGE ATTRIBUTES -- #
         self.damage_coeff = 0
 
-        self.diff_machines = 0  # TODO: remove
-
     class Vintage:
         """Class representing a vintage that consists of multiple
            machines of the same age, lifetime and productivity. """
@@ -264,7 +260,7 @@ class Firm(CRAB_Agent):
             self.prod = prod
             self.amount = amount
             self.age = 0
-            self.lifetime = 15 + firm.model.RNGs[type(firm)].integers(0, 10)  # TODO: TESTING, put this back at (15, 10)
+            self.lifetime = firm.model.RNGs[type(firm)].normal(20, 10)
 
     def update_capital(self) -> None:
         """Update capital: get ordered machines and remove old machines."""
@@ -318,16 +314,8 @@ class Firm(CRAB_Agent):
 
         # Get desired level of inventories
         des_inv_level = inv_frac * self.real_demand
-
-        # TODO: TESTING: BRING BACK?
-        # # To let model start smoothly: meet desired inventory level and demand
-        # if self.model.schedule.time < 10:
-        #     self.inventories = des_inv_level
-        #     self.unfilled_demand = 0
-
         # Get desired production from inventory levels and demand
         desired_prod = max(0, self.real_demand + des_inv_level - self.inventories)
-
         # Bound desired production to maximum production
         prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
                       self.cap_out_ratio)
@@ -393,18 +381,8 @@ class Firm(CRAB_Agent):
             # Get normalized cumulative sum of all offer ratios
             sup_prob = np.cumsum(ratios)/np.cumsum(ratios)[-1]
             j = bisect.bisect_right(sup_prob, self.model.RNGs[type(self)].uniform(0, 1))
-            
-            if self.supplier:
-                old_supplier = self.supplier  # TODO: TESTING, REMOVE LATER
-            else:
-                old_supplier = list(self.offers.keys())[j]
-
             self.supplier = list(self.offers.keys())[j]
 
-            # TODO: REMOVE LATER:
-            if self.supplier.unique_id != old_supplier.unique_id:
-                self.model.changed_supplier[type(self)] += 1
-            # --------
         else:
             # No offers? Pick random capital good firm as supplier
             cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
@@ -417,7 +395,6 @@ class Firm(CRAB_Agent):
 
         # Limit desired amount of machines to what firm can afford
         n_desired = n_expansion + n_replacements
-        self.n_desired = n_desired  # TODO: remove this
         n_affordable = max(0, self.net_worth // self.supplier.price)
         n_to_buy = min(n_desired, n_affordable)
 
@@ -439,8 +416,6 @@ class Firm(CRAB_Agent):
             self.investment_cost = n_ordered * self.supplier.price
             # Add order to suppliers list
             self.supplier.regional_orders[self] = n_ordered
-            # TODO: TESTING, REMOVE LATER:
-            self.n_ordered = n_ordered
         elif n_ordered == 0:
             # No orders? Remove supplier
             self.supplier = None
@@ -669,13 +644,6 @@ class CapitalFirm(Firm):
         stock_available = self.production_made + self.inventories
         self.demand_filled = min(stock_available, self.real_demand)
 
-        # TODO: TESTING, bring back?
-        # if self.lifetime <= 3:
-        #     # First two timesteps cancel unfilled demand for smoother start
-        #     self.unfilled_demand = 0
-        #     self.inventories = 0
-        # else:
-
         # Get unfilled demand and update inventories
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
@@ -717,7 +685,7 @@ class CapitalFirm(Firm):
 
         # CapitalFirms-specific: update production cost + price and advertise
         self.update_prod_cost()
-        self.update_price(markup=0.2)  # TESTING, TODO: remove later
+        self.update_price()
         self.advertise()
 
     def stage2(self) -> None:
@@ -857,32 +825,20 @@ class ConsumptionFirm(Firm):
         # Update cost, avoiding division by zero
         self.cost = self.wage / self.prod if (self.prod > 0) else self.wage
 
-        # TODO: TESTING, bring back?
-        # # Keep markup fixed for the first 10 timesteps (for smooth start)
-        # if self.lifetime <= 10:
-        #     if type(self) == ConsumptionGoodFirm:
-        #         self.markup = 0.275
-        #     elif type(self) == ServiceFirm:
-        #         self.markup = 0.25
-        #     else:
-        #         raise ValueError("Compete and sell function can only be \
-        #                           called on ConsumptionFirm objects.")
-        # else:
-            # # Compute (bounded) markup from market share history
+        # Compute (bounded) markup from market share history
         if len(self.market_share_history) > 1:
-            prev_market_share = self.market_share_history[-2]
-            if prev_market_share > 0:
-                market_share_change = (self.market_share_history[-1] - prev_market_share) / prev_market_share
-                self.markup = max(0.01, min(0.4, round(self.markup * (1 + v * market_share_change), 5)))
-            #     self.markup = 0.4
-
-        #self.markup = 0.2  # TESTING, TODO: remove later
+            self.markup = max(0.01, min(0.4,
+                              round(self.markup * (1 + v *
+                                    ((self.market_share_history[-1] -
+                                      self.market_share_history[-2]) /
+                                      self.market_share_history[-2])), 5)))
+        else:
+            self.markup = 0.2
 
         # Adjust price based on new cost and markup, bounded between
         # 0.7 and 1.3 times the old price to avoid large oscillations
-        self.price = max(0.7 * self.price,
-                         min(1.3 * self.price,
-                             round((1 + self.markup) * self.cost, 8)))
+        self.price = max(0.7 * self.price, min(1.3 * self.price,
+                         round((1 + self.markup) * self.cost, 8)))
 
     def update_market_share(self, chi: float=1.0) -> float:
         """Compute firm market share from competitiveness.
@@ -990,11 +946,6 @@ class ConsumptionFirm(Firm):
         stock_available = self.production_made + self.inventories
         # Get filled and unfilled demand and update inventories
         self.demand_filled = min(stock_available, self.real_demand)
-        # TODO: TESTING, bring back?
-        # if self.lifetime <= 3:
-        #     self.unfilled_demand = 0
-        #     self.inventories = 0
-        # else:
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
 
@@ -1022,7 +973,8 @@ class ConsumptionFirm(Firm):
             self.create_subsidiaries()
 
             # Remove firm from model if market share or demand is too low
-            if (self.market_share[0] < 1e-6 or sum(self.past_demand) < 1):
+            if (self.market_share[self.region] < 1e-6
+                or sum(self.past_demand) < 1):
                 # Check that enough firms of this type still exist
                 firms = self.model.get_firms_by_type(type(self), self.region)
                 if len(firms) > 10:
