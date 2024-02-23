@@ -288,7 +288,6 @@ class Firm(CRAB_Agent):
             vintage.age += 1
             if vintage.age > vintage.lifetime:
                 self.capital_vintage.remove(vintage)
-                self.model.machine_dead += 1
                 del vintage
         # Reset investment cost
         self.investment_cost = 0
@@ -316,12 +315,12 @@ class Firm(CRAB_Agent):
         # Bound desired production to maximum production
         prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
                       self.cap_out_ratio)
-        self.feasible_production = math.ceil(min(desired_prod, prod_bound))
+        self.feasible_production = round(min(desired_prod, prod_bound))
 
         # If capital stock is too low: expand firm (buy more capital)
         if self.feasible_production < desired_prod:
-            n_expansion = (math.ceil((desired_prod - self.feasible_production) *
-                           self.cap_out_ratio))
+            n_expansion = (math.ceil(desired_prod - self.feasible_production) *
+                           self.cap_out_ratio)
         else:
             n_expansion = 0
         return n_expansion
