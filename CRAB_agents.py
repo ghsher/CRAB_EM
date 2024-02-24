@@ -30,8 +30,8 @@ from mesa import Agent
 
 
 # -- FIRM INITIALIZATION VALUES -- #
-WAGE_DIST = (1, 1.05)  # Normal distribution (mean, std) of initial wages
-PROD_DIST = (1, 1.05)  # Normal distribution (mean, std) of initial productivity
+PROD_DIST = (1.05, 0.02)  # Normal distribution (mean, std) of initial wages
+WAGE_DIST = (1, 0.02)  # Normal distribution (mean, std) of initial productivity
 
 # -- FIRM CONSTANTS -- #
 INTEREST_RATE = 0.01
@@ -222,9 +222,10 @@ class Firm(CRAB_Agent):
         self.size = 0
 
         # -- CAPITAL GOODS MARKET ATTRIBUTES -- #
-        self.wage = wage if wage else model.RNGs[type(self)].uniform(low=WAGE_DIST[0],
-                                                                     high=WAGE_DIST[1])
-        self.prod = 1
+        self.wage = wage if wage else model.RNGs[type(self)].normal(WAGE_DIST[0], WAGE_DIST[1])
+        self.prod =  prod if prod else model.RNGs[type(self)].normal(PROD_DIST[0], PROD_DIST[1])
+
+
         self.old_prod = old_prod if old_prod else self.prod
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
@@ -245,6 +246,7 @@ class Firm(CRAB_Agent):
 
         # -- FLOOD DAMAGE ATTRIBUTES -- #
         self.damage_coeff = 0
+        
 
     class Vintage:
         """Class representing a vintage that consists of multiple
@@ -311,10 +313,12 @@ class Firm(CRAB_Agent):
             self.past_demand.popleft()
         self.past_demand.append(self.real_demand)
 
+        expected_demand = sum(self.past_demand) / len(self.past_demand)
+
         # Get desired level of inventories
-        des_inv_level = inv_frac * self.real_demand
+        des_inv_level = inv_frac * expected_demand
         # Get desired production from inventory levels and demand
-        desired_prod = max(0, self.real_demand + des_inv_level - self.inventories)
+        desired_prod = max(0, expected_demand + des_inv_level - self.inventories)
         # Bound desired production to maximum production
         prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
                       self.cap_out_ratio)
@@ -322,7 +326,7 @@ class Firm(CRAB_Agent):
 
         # If capital stock is too low: expand firm (buy more capital)
         if self.feasible_production < desired_prod:
-            n_expansion = (math.ceil(desired_prod - self.feasible_production) *
+            n_expansion = round( (desired_prod - self.feasible_production) *
                            self.cap_out_ratio)
         else:
             n_expansion = 0
@@ -639,13 +643,18 @@ class CapitalFirm(Firm):
         """Check if all orders can be satisfied, else: cancel or reduce orders. """
 
         # Check how much demand can be filled with production and inventories
-        self.production_made = max(0, round(self.size * self.prod))
+        self.production_made = max(0, round(self.size * self.prod, 2))
         stock_available = self.production_made + self.inventories
         self.demand_filled = min(stock_available, self.real_demand)
 
         # Get unfilled demand and update inventories
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
+
+        #if self.lifetime  < 10:
+         #   self.inventories = 0.1 * self.real_demand
+          #  self.unfilled_demand = 0
+    
 
         # If demand cannot be filled: cancel or reduce orders
         if self.demand_filled < self.real_demand:
@@ -938,8 +947,7 @@ class ConsumptionFirm(Firm):
 
         # Compute real demand from regional demand, market shares and price
         self.real_demand = np.round(sum([gov.regional_demands[type(self)],
-                                         gov.export_demands[type(self)]] 
-                                        * self.market_share) / self.price, 3)
+                                         gov.export_demands[type(self)]]   * self.market_share) / self.prod, 3)
         # Check available stock
         self.production_made = self.size * self.prod
         stock_available = self.production_made + self.inventories
@@ -947,6 +955,12 @@ class ConsumptionFirm(Firm):
         self.demand_filled = min(stock_available, self.real_demand)
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
+
+        #if self.life < 10:
+         #   self.inventories = 0.1 * self.real_demand
+          #  self.unfilled_demand = 0
+
+
 
         # -- ACCOUNTING -- #
         # If order is canceled: reset order and investment cost

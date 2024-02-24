@@ -28,7 +28,7 @@ from datacollection import model_vars, agent_vars
 # -- INITIALIZE REGION SIZES -- #
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 5000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 10000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
                         Agriculture: 200,
                         Industry: 300,
@@ -74,13 +74,13 @@ INIT_KL_RATIO = {CapitalFirm: 2,             # Initial capital-labor ratio
                     Finance: 0.9,
                     Recreation: 0.8}
 INIT_MK  = {CapitalFirm: 0.3,                 # Initial markup
-                    Agriculture: 0.2,
+                    Agriculture: 0.25,
                     Industry: 0.25,
-                    Construction: 0.22,
-                    Transport: 0.26,
-                    Information: 0.2,
-                    Finance: 0.27,
-                    Recreation: 0.21}
+                    Construction: 0.25,
+                    Transport: 0.25,
+                    Information: 0.25,
+                    Finance: 0.25,
+                    Recreation: 0.25}
 
 
 class CRAB_Model(Model):

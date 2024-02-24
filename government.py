@@ -142,7 +142,7 @@ class Government(Agent):
         self.insurance_expenses = 0
         self.repair_expenses = 0
 
-    def set_min_wage(self, min_wage_frac: float=0.5,
+    def set_min_wage(self, min_wage_frac: float=0.6,
                      unempl_subsidy_frac: float=1) -> None:
         """Sets minimum wages and unemployment subsidy. """
 
@@ -152,9 +152,9 @@ class Government(Agent):
         self.unempl_subsidy = round(max(0.1, self.min_wage * unempl_subsidy_frac), 3)
 
         # # At beginning: keep minimum wage and unemployment subsidy constant
-        # if self.model.schedule.time < 10:
-        #     self.unempl_subsidy = 1
-        #     self.min_wage = 1
+        #if self.model.schedule.time < :
+         #    self.unempl_subsidy = 1
+          #   self.min_wage = 1
 
     def get_best_cap(self) -> CapitalFirm:
         """Get CapitalFirm with best productivity/price ratio. """
