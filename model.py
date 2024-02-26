@@ -28,7 +28,7 @@ from datacollection import model_vars, agent_vars
 # -- INITIALIZE REGION SIZES -- #
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 5000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 10000}                 # Number of households per region
 N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
                         ConsumptionGoodFirm: 200,
                         ServiceFirm: 300}}

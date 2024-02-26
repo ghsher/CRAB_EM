@@ -53,24 +53,26 @@ agent_vars = {"Type":
 			  		lambda a: getattr(a, "inventories", None),
 			  "N ordered":
 			  		lambda a: getattr(a, "quantity_ordered", None),
-			  "Production made":
-			  		lambda a: getattr(a, "production_made", None),
-			  "Sum past demand":
-			  		lambda a: sum(getattr(a, "past_demand", None))
-			  				  if getattr(a, "past_demand", None) is not None
-			  				  else None,
+			  # "Production made":
+			  # 		lambda a: getattr(a, "production_made", None),
+			  # "Sum past demand":
+			  # 		lambda a: sum(getattr(a, "past_demand", None))
+			  # 				  if getattr(a, "past_demand", None) is not None
+			  # 				  else None,
 			  "Past demand":
 			  		lambda a: getattr(a, "past_demand", None)[-1]
 			  				  if getattr(a, "past_demand", None) is not None
 			  				  else None,
 			  "Real demand":
 			  		lambda a: getattr(a, "real_demand", None),
+			  "Demand filled":
+			  		lambda a: getattr(a, "demand_filled", None),
+		  	  "Demand unfilled":
+			  		lambda a: getattr(a, "unfilled_demand", None),
 			  "Wage":
 			  		lambda a: getattr(a, "wage", None),
 			  "Net worth":
 			  		lambda a: getattr(a, "net_worth", None),
-			  "Debt":
-			  		lambda a: getattr(a, "debt", None),
 			  "Size":
 			  		lambda a: getattr(a, "size", None),
 			  "Labor demand":

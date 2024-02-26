@@ -17,7 +17,7 @@ from tqdm.auto import tqdm
 
 from model import CRAB_Model
 
-STEPS = 400
+STEPS = 300
 N_RUNS = 5
 RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
 
