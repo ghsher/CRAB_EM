@@ -32,20 +32,24 @@ FRAC_CONS_TRANS = 0.2
 FRAC_CONS_CONS = 0.15
 FRAC_CONS_INFO = 0.1
 FRAC_CONS_FIN = 0.1
-FRAC_CONS_REC = 0.1
-FRAC_CONS_AGR = 0.15
+FRAC_CONS_SERV = 0.25
+
 
 FRAC_EXP = 0                # Multiplication factor for export each timestep
 FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
 
-FIRMS = [Firm, CapitalFirm, Agriculture, Industry, Construction, Transport,
-              Information, Finance, Recreation]
+FIRMS = [Firm, C26, C27, C28, C29, C30,
+        Industry, Construction, Transport,
+        Information, Finance, Business_services]
 
-FIRM_TYPES = [CapitalFirm, Agriculture, Industry, Construction, Transport,
-              Information, Finance, Recreation]
+FIRM_TYPES = [C26, C27, C28, C29, C30,
+            Industry, Construction, Transport,
+            Information, Finance, Business_services]
 
-CONS_FIRM_TYPES = [Industry, Agriculture, Construction, Transport,
-              Information, Finance, Recreation]
+CAP_FIRM_TYPES = [C26, C27, C28, C29, C30]
+
+CONS_FIRM_TYPES = [Industry, Construction, Transport,
+              Information, Finance, Business_services]
 
 # -- HELPER FUNCTIONS -- #
 def normalize(firms: list, attribute: str, convert_to_pos=False) -> dict:
@@ -117,6 +121,8 @@ class Government(Agent):
         # -- GOODS MARKET ATTRIBUTES -- #
         self.avg_prod = {k: 1 for k in FIRMS}
         self.prod_increase = {k: 0 for k in FIRMS}
+        self.best_cap = {}
+        self.top_prod = {}
         self.bailout_cost = 0
         self.new_firms_resources = 0
         self.regional_demands = {}
@@ -156,11 +162,11 @@ class Government(Agent):
          #    self.unempl_subsidy = 1
           #   self.min_wage = 1
 
-    def get_best_cap(self) -> CapitalFirm:
+    def get_best_cap(self, firm_type: type) -> CapitalFirm:
         """Get CapitalFirm with best productivity/price ratio. """
 
         # Get prod/price ratio for subsample of all CapitalFirms in this region
-        cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
+        cap_firms = self.model.get_firms_by_supplier(firm_type, self.region)
         cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
         # Collect capital firm productivities (of last timestep)
         firm_prod_dict = {firm: firm.old_prod / firm.price
@@ -247,7 +253,7 @@ class Government(Agent):
             # Get all firms of this type
             firms = self.model.get_firms_by_type(firm_type, self.region)
             # For ConsumptionGood and Service firms: compute normalized competitiveness
-            if firm_type != CapitalFirm:
+            if firm_type not in CAP_FIRM_TYPES:
                 self.comp_norm[firm_type] = normalize(firms, "competitiveness",
                                                       convert_to_pos=True)
 
@@ -281,27 +287,28 @@ class Government(Agent):
             self.demand_RoW = FRAC_EXP_INIT * total_consumption
 
         # Save regional and export demands per consumption sector
-        agr_consumption =  FRAC_CONS_AGR * total_consumption
+        # TODO: We should add this in a loop  dict
+   
         ind_consumption = FRAC_CONS_IND * total_consumption
         cons_consumption = FRAC_CONS_CONS * total_consumption
         trans_consumption = FRAC_CONS_TRANS * total_consumption
         info_consumption = FRAC_CONS_INFO * total_consumption
         fin_consumption = FRAC_CONS_FIN * total_consumption
-        rec_consumption = FRAC_CONS_REC * total_consumption
+        buss_serv_consumption = FRAC_CONS_SERV * total_consumption
 
         #service_consumption = total_consumption - goods_consumption
-        export_demand_agr = self.demand_RoW * FRAC_CONS_AGR
+        export_demand_buss_serv = self.demand_RoW * FRAC_CONS_SERV
         export_demand_ind = self.demand_RoW * FRAC_CONS_IND
         export_demand_cons = self.demand_RoW * FRAC_CONS_CONS
         export_demand_trans = self.demand_RoW * FRAC_CONS_TRANS
         export_demand_info = self.demand_RoW * FRAC_CONS_INFO
         export_demand_fin = self.demand_RoW * FRAC_CONS_FIN
-        export_demand_rec = self.demand_RoW * FRAC_CONS_REC
+    
 
 
     
-        self.regional_demands[Agriculture] = round(agr_consumption, 3)
-        self.export_demands[Agriculture] = round(export_demand_agr, 3)
+        self.regional_demands[Business_services] = round(buss_serv_consumption, 3)
+        self.export_demands[Business_services] = round(export_demand_buss_serv, 3)
         self.regional_demands[Industry] = round(ind_consumption, 3)
         self.export_demands[Industry] = round(export_demand_ind, 3)
         self.regional_demands[Construction] = round(cons_consumption, 3)
@@ -312,8 +319,7 @@ class Government(Agent):
         self.export_demands[Information] = round(export_demand_info, 3)
         self.regional_demands[Finance] = round(fin_consumption, 3)
         self.export_demands[Finance] = round(export_demand_fin, 3)
-        self.regional_demands[Recreation] = round(rec_consumption, 3)
-        self.export_demands[Recreation] = round(export_demand_rec, 3)
+
 
 
     def stage6(self) -> None:
@@ -344,12 +350,13 @@ class Government(Agent):
         # Get highest wage in this region (of ConsumptionGood and Service firms)
         self.top_wage = max(firm.wage for firm in
                             self.model.get_cons_firms(self.region))
-        # Get top productivity (of CapitalGood firms in previous timestep)
-        self.top_prod = max(firm.old_prod for firm in
-                            self.model.get_firms_by_type(CapitalFirm, self.region))
+
 
         # Get total capital and capital for firm subsidiaries per sector
         for firm_type in FIRM_TYPES:
             capital = self.get_capital(firm_type)
             self.total_capital[firm_type] = capital[0]
             self.capital_new_firm[firm_type] = capital[1]
+            top_prod = self.get_best_cap(firm_type)
+            self.top_prod[firm_type] = top_prod.old_prod
+            self.best_cap[firm_type] = top_prod

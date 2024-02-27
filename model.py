@@ -29,58 +29,78 @@ from datacollection import model_vars, agent_vars
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
 N_HOUSEHOLDS = {REGIONS[0]: 10000}                 # Number of households per region
-N_FIRMS = {REGIONS[0]: {CapitalFirm: 125,          # Number of firms per type per region
-                        Agriculture: 200,
+N_FIRMS = {REGIONS[0]: {C26: 30,          # Number of firms per type per region
+                        C27: 30,
+                        C28: 30,
+                        C29: 30,
+                        C30: 30,
                         Industry: 300,
                         Construction: 200,
                         Transport: 150,
                         Information: 100,
                         Finance: 100,
-                        Recreation: 100,
+                        Business_services: 100,
                         }}
 
 # -- FIRM INITIALIZATION ATTRIBUTES -- #
-INIT_NET_WORTH = {CapitalFirm: 150,         # Initial net worth
-                  Agriculture: 20,
-                  Industry: 50,
-                  Construction: 30,
-                  Transport: 25,
-                  Information: 20,
-                  Finance: 20,
-                  Recreation: 20}
+INIT_NET_WORTH = {C26: 100,
+                C27: 100,
+                C28: 100,
+                C29: 100,
+                C30: 100,
+                Industry: 50,
+                Construction: 30,
+                Transport: 25,
+                Information: 20,
+                Finance: 20,
+                Business_services: 20}
 
-INIT_CAP_AMOUNT = {CapitalFirm: 3,          # Initial capital per machine
-                   Agriculture: 2,
-                   Industry: 2,
-                   Construction: 2,
-                   Transport: 2,
-                   Information: 2,
-                   Finance: 2,
-                   Recreation: 2}
-INIT_N_MACHINES = {CapitalFirm: 20,         # Initial number of machines
-                   Agriculture: 10,
-                   Industry: 15,
-                   Construction: 10,
-                   Transport: 10,
-                   Information: 10,
-                   Finance: 10,
-                   Recreation: 10}
-INIT_KL_RATIO = {CapitalFirm: 2,             # Initial capital-labor ratio
-                    Agriculture: 1.3,
+INIT_CAP_AMOUNT = {C26: 4,
+                    C27: 4,
+                    C28: 4,
+                    C29: 4,
+                    C30: 4,
+                    Industry: 2,
+                    Construction: 2,
+                    Transport: 2,
+                    Information: 2,
+                    Finance: 2,
+                    Business_services: 2}
+
+INIT_N_MACHINES = { C26: 20,         # Initial number of machines
+                    C27: 20,
+                    C28: 20,
+                    C29: 20,
+                    C30: 20,
+                    Industry: 15,
+                    Construction: 10,
+                    Transport: 10,
+                    Information: 10,
+                    Finance: 10,
+                    Business_services: 10}
+
+INIT_KL_RATIO = {   C26: 2,             # Initial capital-labor ratio
+                    C27: 2,
+                    C28: 2,
+                    C29: 2,
+                    C30: 2,
                     Industry: 1.5,
                     Construction: 1.1,
                     Transport: 1.4,
                     Information: 1.2,
                     Finance: 0.9,
-                    Recreation: 0.8}
-INIT_MK  = {CapitalFirm: 0.3,                 # Initial markup
-                    Agriculture: 0.25,
+                    Business_services: 1.2}
+INIT_MK  = {        C26: 0.25,                 # Initial markup
+                    C27: 0.25,
+                    C28: 0.25,
+                    C29: 0.25,
+                    C30: 0.25,
                     Industry: 0.25,
                     Construction: 0.25,
                     Transport: 0.25,
                     Information: 0.25,
                     Finance: 0.25,
-                    Recreation: 0.25}
+                    Business_services: 0.25}
 
 
 class CRAB_Model(Model):
@@ -143,10 +163,11 @@ class CRAB_Model(Model):
         #       CapitalFirms have to be connected to themselves.
         for region in REGIONS:
             # NOTE: assumes suppliers within same region.
-            cap_firms = self.get_firms_by_type(CapitalFirm, region)
+            cap_firms = self.get_cap_firms(region)
             for firm in cap_firms:
                 # Get supplier
-                firm.supplier = self.RNGs[type(firm)].choice(cap_firms)
+                suppliers = self.get_firms_by_supplier(type(firm), region)
+                firm.supplier = self.RNGs[type(firm)].choice(suppliers)
                 # Append brochure to offers
                 firm.offers = {firm.supplier: firm.supplier.brochure}
                 # Also keep track of clients on supplier side
@@ -200,19 +221,21 @@ class CRAB_Model(Model):
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
         # Get best regional capital firm (and its brochure)
-        best_cap = gov.get_best_cap()
-        brochure = best_cap.brochure
+        #best_cap = gov.get_best_cap()
+        #brochure = best_cap.brochure
         markup = INIT_MK[type(firm)]
+        suppliers = self.get_firms_by_supplier(type(firm), firm.region)
+        supplier = self.RNGs[type(firm)].choice(suppliers)
         
         if isinstance(firm, CapitalFirm):
             # Initialize productivity as fraction of regional top productivity
             x_low, x_up, a, b = (-0.075, 0.075, 2, 4)
             fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
-            old_prod = np.around(gov.top_prod * fraction_prod, 3)
-            prod = brochure["prod"]
-            print(old_prod, prod)
+            old_prod = np.around(gov.top_prod[type(firm)] * fraction_prod, 3)
+
+            #print(old_prod, prod)
             # Initialize market share as fraction of total at beginning
-            market_share = 1 / N_FIRMS[firm.region][CapitalFirm]
+            market_share = 1 / N_FIRMS[firm.region][type(firm)]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region,
                              market_share=market_share, net_worth=net_worth,
@@ -223,7 +246,8 @@ class CRAB_Model(Model):
         elif isinstance(firm, ConsumptionFirm):
             # Initialze competitiveness and net_worth from regional averages
             # Initialize productivity as productivity of best supplier
-            prod = brochure["prod"]
+            
+            prod = supplier.brochure["prod"]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region, market_share=0,
                             init_n_machines=1, init_cap_amount=capital_amount,
@@ -236,7 +260,7 @@ class CRAB_Model(Model):
             raise ValueError("Firm type not recognized in function add_subsidiary().")
 
         # Set supplier to best regional capital firm
-        sub.supplier = best_cap
+        sub.supplier = supplier
         sub.offers = {sub.supplier: sub.supplier.brochure}
         sub.supplier.clients.append(sub)
 
@@ -272,11 +296,25 @@ class CRAB_Model(Model):
         Returns:
             firms           : List of selected firms
         """
-        firms = self.firms[region][Agriculture] + self.firms[region][Industry] + \
+        firms = self.firms[region][Business_services] + self.firms[region][Industry] + \
                 self.firms[region][Construction] + self.firms[region][Transport] + \
-                self.firms[region][Information] + self.firms[region][Finance] + \
-                self.firms[region][Recreation]
+                self.firms[region][Information] + self.firms[region][Finance]  #+  \
+                #self.firms[region][Recreation]
         return firms
+    
+    def get_cap_firms(self, region: int):
+        """Return list of all capital firms in this region.
+
+        Args:
+            region          : Region where firms are located
+        Returns:
+            firms           : List of selected firms
+        """
+        firms = self.firms[region][C26] + self.firms[region][C27] + \
+                self.firms[region][C28] + self.firms[region][C29] + \
+                self.firms[region][C30]
+        return firms
+    
 
     def get_firms_by_type(self, firm_type: type, region: int):
         """Return all firms of specified type and region.
@@ -288,7 +326,69 @@ class CRAB_Model(Model):
             firms           : List of selected firms
         """
         return self.firms[region][firm_type]
+    
+    def get_firms_by_buyer(self, firm_type: type, region: int):
+        """Return all firms of specified type and region.
 
+        Args:
+            region          : Region where firms are located
+            type            : Firm type to select
+        Returns:
+            firms           : List of selected firms
+
+        """
+        if firm_type == C26:
+            buyers = [Business_services, Finance]
+        elif firm_type == C27:
+            buyers = [Industry, Information]
+        elif firm_type == C28:
+            buyers = [Industry, Business_services, Construction]
+        elif firm_type == C29:
+            buyers = [Construction, Transport]
+        elif firm_type == C30:
+            buyers = [Transport]
+        
+        firms = []
+        for buyer in buyers:
+            firms += self.firms[region][buyer]
+        
+        return firms
+
+    def get_firms_by_supplier(self, firm_type: type, region: int):
+        """Return all firms of specified type and region.
+
+        Args:
+            region          : Region where firms are located
+            type            : Firm type to select
+        Returns:
+            firms           : List of selected firms
+        """
+        if firm_type == Business_services:
+            suppliers = [C26, C28]
+        elif firm_type == Industry:
+            suppliers = [C27, C28]
+        elif firm_type == Construction:
+            suppliers = [C28, C29]
+        elif firm_type == Transport:
+            suppliers = [C29, C30]
+        elif firm_type == Information:
+            suppliers = [C27]
+        elif firm_type == Finance:
+            suppliers = [C26]
+        else:
+            suppliers = [C28]  
+       
+        firms = []
+        for supplier in suppliers:
+            firms += self.firms[region][supplier]
+        
+        return firms
+    
+
+            
+
+
+      
     def get_households(self, region: int):
         """Return list of all households in this region.
 

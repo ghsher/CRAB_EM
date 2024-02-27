@@ -19,10 +19,16 @@ model_vars = {
 			  		lambda m: m.schedule.get_agent_count(),
 			"n_households": 
 			  		lambda m: len(m.get_households(REGION)),
-			"n_cap_firms": 
-		  			lambda m: len(m.get_firms_by_type(CapitalFirm, REGION)),
-			"n_agr_firms": 
-			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
+			"n_c26_firms": 
+		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
+            "n_c27_firms":
+					lambda m: len(m.get_firms_by_type(C27, REGION)),
+            "n_c28_firms":
+					lambda m: len(m.get_firms_by_type(C28, REGION)),
+            "n_c29_firms":
+					lambda m: len(m.get_firms_by_type(C29, REGION)),
+            "n_c30_firms":
+					lambda m: len(m.get_firms_by_type(C30, REGION)),
 			"n_ind_firms": 
 			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
             "n_cons_firms": 
@@ -34,7 +40,7 @@ model_vars = {
 			"n_fin_firms": 
 			  		lambda m: len(m.get_firms_by_type(Finance, REGION)),
 			"n_rec_firms": 
-			  		lambda m: len(m.get_firms_by_type(Recreation, REGION)),
+			  		lambda m: len(m.get_firms_by_type(Business_services, REGION)),
                 
 			"HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
@@ -87,6 +93,8 @@ agent_vars = {"Type":
 			  		lambda a: getattr(a, "debt", None),
 			  "Size":
 			  		lambda a: getattr(a, "size", None),
+              "Supplier":
+			  		lambda a: getattr(a, "supplier", None),
 			  "Labor demand":
 			  		lambda a: getattr(a, "desired_employees", None),
 			  "Capital amount":
