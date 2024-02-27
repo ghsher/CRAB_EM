@@ -10,8 +10,10 @@ Both are based on a CRAB_Agent parent class, containing all shared functions
 for any agent in the CRAB model.
 The Household class is a simple agent that can engage in labor search to find a job
 at one of the Firms.
-There are three types of Firms: CapitalFirms, ConsumptionGoodFirms and ServiceFirms.
-The CapitalFirms supply machines to the Consum
+There are three types of Firms: CapitalFirms, and two types of ConsumptionFirms:
+ConsumptionGoodFirms and ServiceFirms.
+The CapitalFirms supply machines to other CapitalFirms and to ConsumptionFirms,
+which they use to provide goods and services to households for consumption.
 
 """
 
@@ -40,7 +42,7 @@ DEBT_SALES_RATIO = 2   # Ratio affordable debt : sales
 
 def systemic_tax(profits: list, sales: float, quintiles: list,
                  taxes: list=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) -> None:
-    """
+    """Returns tax for given profits and sales.
 
     Args:
         profits         : List of firm profits per region
@@ -302,7 +304,6 @@ class Firm(CRAB_Agent):
             self.past_demand.popleft()
         self.past_demand.append(self.real_demand)
 
-        # TODO: check if can be kept
         expected_demand = np.mean(self.past_demand)
         # Get desired level of inventories
         des_inv_level = inv_frac * expected_demand
@@ -312,16 +313,6 @@ class Firm(CRAB_Agent):
         prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
                       self.cap_out_ratio)
         self.feasible_production = round(min(desired_prod, prod_bound))
-
-        # # TODO: check if can be removed?
-        # # Get desired level of inventories
-        # des_inv_level = inv_frac * self.real_demand
-        # # Get desired production from inventory levels and demand
-        # desired_prod = max(0, self.real_demand + des_inv_level - self.inventories)
-        # # Bound desired production to maximum production
-        # prod_bound = (sum(vintage.amount for vintage in self.capital_vintage) /
-        #               self.cap_out_ratio)
-        # self.feasible_production = round(min(desired_prod, prod_bound))
 
         # If capital stock is too low: expand firm (buy more capital)
         if self.feasible_production < desired_prod:

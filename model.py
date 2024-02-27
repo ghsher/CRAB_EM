@@ -254,6 +254,10 @@ class CRAB_Model(Model):
     def step(self) -> None:
         """Defines a single model step in the CRAB model. """
 
+        # -- TODO: add migration -- #
+
+        # -- TODO: implement flood shock -- #
+
         # -- MODEL STEP: see stages in agent classes for more details -- #
         self.schedule.step()
 
