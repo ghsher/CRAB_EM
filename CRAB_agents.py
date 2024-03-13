@@ -371,8 +371,10 @@ class Household(CRAB_Agent):
             self.savings = 0
 
         # -- Repair flood damages -- #
-        # Update house value by difference in average wage
-        self.house_value = self.house_value * (gov.avg_wage - gov.avg_wage_prev)
+        # Update house value relative to changes in average wage
+        wage_diff = (gov.avg_wage - gov.avg_wage_prev)/gov.avg_wage_prev
+        self.house_value = (self.house_value * (1 + wage_diff)
+                            if wage_diff != 0 else self.house_value)
         # Check if still any damage remaining, otherwise reset repair costs
         if self.monetary_damage > 0:
             self.repair_damage()
