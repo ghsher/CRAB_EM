@@ -23,6 +23,11 @@ from mesa import Agent
 from CRAB_agents import *
 
 
+import time
+
+
+
+
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
@@ -90,7 +95,7 @@ def get_quantiles(firms: list, attribute: str,
 class Government(Agent):
     """Government class for the CRAB Model. """
 
-    def __init__(self, model: CRAB_Model, region: int) -> None:
+    def __init__(self, model: CRAB_Model, region: int, CCA_subsidy: bool=False) -> None:
         """Initialize Government agent. """
 
         super().__init__(model.next_id(), model)
@@ -123,8 +128,8 @@ class Government(Agent):
         self.unempl_subsidy = 0
 
         # -- FLOOD-RELATED ATTRIBUTES -- #
-        self.insurance_expenses = 0
-        self.repair_expenses = 0
+        self.CCA_subsidy = CCA_subsidy
+        self.total_repair_expenses = 0
 
     def set_min_wage(self, min_wage_frac: float=0.5,
                      unempl_subsidy_frac: float=1) -> None:
@@ -266,7 +271,9 @@ class Government(Agent):
 
         # Save regional and export demands per consumption sector
         goods_consumption = FRAC_CONS_IN_GOODS * total_consumption
+        goods_consumption += self.total_repair_expenses
         service_consumption = total_consumption - goods_consumption
+        
         export_demand_cons = self.demand_RoW * FRAC_CONS_IN_GOODS
         export_demand_serv = self.demand_RoW - export_demand_cons
         self.regional_demands[ConsumptionGoodFirm] = round(goods_consumption, 3)

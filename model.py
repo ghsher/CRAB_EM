@@ -12,6 +12,7 @@ This class is based on the MESA Model class.
 
 import itertools
 import numpy as np
+import pandas as pd
 
 from collections import defaultdict
 
@@ -44,14 +45,21 @@ INIT_N_MACHINES = {CapitalFirm: 20,         # Initial number of machines
                    ConsumptionGoodFirm: 10,
                    ServiceFirm: 15}
 
+# -- FLOOD ATTRIBUTES -- #
+FLOOD_WHEN = {40: 1000, 80: 100}  # Flood occurrence (timestep: return period)
+
+
 class CRAB_Model(Model):
     """Model class for the CRAB model. """
 
-    def __init__(self, random_seed: int) -> None:
+    def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
+                 firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
+                 CCA: bool=True) -> None:
         """Initialization of the CRAB model.
 
         Args:
             random_seed         : Random seed for model 
+            PMT_weights         : 
         """
         super().__init__()
 
@@ -71,7 +79,13 @@ class CRAB_Model(Model):
         agent_types = list(N_FIRMS[0].keys()) + [Household] + [Government]
         for i, agent_class in enumerate(agent_types):
             self.RNGs[agent_class] = np.random.default_rng(random_seed + i)
+        # Create separate random generator for household adaptation process
+        self.RNGs["Adaptation"] = np.random.default_rng(random_seed + i + 1)
         # ------------------------------
+
+        # -- FLOOD and ADAPTATION ATTRIBUTES -- #
+        self.CCA = CCA  # True/False (adaptation on/off)
+        self.PMT_weights = PMT_weights
 
         # -- INITIALIZE AGENTS -- #
         self.governments = defaultdict(list)
@@ -79,20 +93,29 @@ class CRAB_Model(Model):
         self.households = defaultdict(list)
         # Add households and firms per region
         for region in REGIONS:
-            # Create firms
+            # -- CREATE FIRMS -- #
             self.firms[region] = {}
             for firm_type, N in N_FIRMS[region].items():
                 self.firms[region][firm_type] = []
-                for _ in range(N):
+                # Take random subsample from synthetic population
+                idx = self.RNGs[firm_type].choice(firm_flood_depths.index, N)
+                for _, flood_depths in firm_flood_depths.loc[idx].iterrows():
+                    flood_depths = {int(RP.lstrip("Flood depth RP")): depth
+                                    for RP, depth in flood_depths.items()}
                     self.add_firm(firm_type, region=region,
+                                  flood_depths=flood_depths,
                                   market_share=1/N_FIRMS[region][firm_type],
                                   net_worth=INIT_NET_WORTH[firm_type],
                                   init_n_machines=INIT_N_MACHINES[firm_type],
                                   init_cap_amount=INIT_CAP_AMOUNT[firm_type])
-            # Create households
+            
+            # -- CREATE HOUSEHOLDS -- #
             self.households[region] = []
-            for _ in range(N_HOUSEHOLDS[region]):
-                self.add_household(region)
+            # Take random subsample from synthetic population
+            idx = self.RNGs[Household].choice(HH_attributes.index,
+                                              N_HOUSEHOLDS[region])
+            for _, attributes in HH_attributes.loc[idx].iterrows():
+                self.add_household(region, attributes)
             # Create government
             self.add_government(region)
 
@@ -110,9 +133,12 @@ class CRAB_Model(Model):
                 # Also keep track of clients on supplier side
                 firm.supplier.clients.append(firm)
 
-        # -- FIRM EVOLUTION ATTRIBUTES (per region) -- #
+        # -- FIRM ATTRIBUTES (per region) -- #
+        # Keep track of firms leaving and entering
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
+        # Keep track of vacancies
+        self.vacancies = defaultdict(list)
 
         # -- DATACOLLECTION -- #
         self.datacollector = DataCollector(model_reporters=model_vars,
@@ -125,9 +151,9 @@ class CRAB_Model(Model):
         self.governments[region] = gov
         self.schedule.add(gov)
 
-    def add_household(self, region: int) -> None:
+    def add_household(self, region: int, attributes: pd.DataFrame) -> None:
         """Add new household to the CRAB model and scheduler. """
-        hh = Household(self, region)
+        hh = Household(self, region, attributes)
         self.households[region].append(hh)
         self.schedule.add(hh)
 
@@ -167,25 +193,26 @@ class CRAB_Model(Model):
             fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
             old_prod = np.around(gov.top_prod * fraction_prod, 3)
             prod = brochure["prod"]
-            print(old_prod, prod)
             # Initialize market share as fraction of total at beginning
             market_share = 1 / N_FIRMS[firm.region][CapitalFirm]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region,
+                             flood_depths=firm.flood_depths,
                              market_share=market_share, net_worth=net_worth,
                              init_n_machines=1, init_cap_amount=capital_amount,
                              sales=capital_amount, wage=firm.wage, price=firm.price,
                              prod=prod, old_prod=old_prod, lifetime=0)
         elif isinstance(firm, ConsumptionFirm):
-            # Initialze competitiveness and net_worth from regional averages
             # Initialize productivity as productivity of best supplier
             prod = brochure["prod"]
             # Create new firm
-            sub = type(firm)(model=self, region=firm.region, market_share=0,
+            sub = type(firm)(model=self, region=firm.region,
+                             flood_depths=firm.flood_depths, market_share=0,
                              init_n_machines=1, init_cap_amount=capital_amount,
                              net_worth=net_worth,
                              sales=0, wage=firm.wage, price=firm.price, prod=prod,
                              lifetime=0)
+            # Initialze competitiveness from regional average
             sub.competitiveness = gov.avg_comp_norm[type(firm)]
         else:
             raise ValueError("Firm type not recognized in function add_subsidiary().")
@@ -204,7 +231,6 @@ class CRAB_Model(Model):
 
     def remove_firm(self, firm: Type[Firm]) -> None:
         """Remove firm from model. """
-        
         self.governments[firm.region].bailout_cost += firm.net_worth
         self.firms[firm.region][type(firm)].remove(firm)
         self.schedule.remove(firm)
@@ -254,18 +280,23 @@ class CRAB_Model(Model):
     def step(self) -> None:
         """Defines a single model step in the CRAB model. """
 
-        # -- TODO: add migration -- #
-
-        # -- TODO: implement flood shock -- #
+        # -- FLOOD SHOCK -- #
+        if self.schedule.time in FLOOD_WHEN.keys():
+            self.flood_now = True
+            self.flood_return = FLOOD_WHEN[self.schedule.time]
+        else:
+            self.flood_now = False
+            self.flood_return = 0
 
         # -- MODEL STEP: see stages in agent classes for more details -- #
         self.schedule.step()
+        # Reset firm vacancies
+        self.vacancies = defaultdict(list)
 
+        # -- REMOVE BANKRUPT FIRMS -- #
         for region in REGIONS:
-            # -- REMOVE BANKRUPT FIRMS -- #
             for firm in self.firms_to_remove[region]:
                 self.remove_firm(firm)
-
                 # Create new firms as subsidiaries of bankrupt firms
                 firm_type = type(firm)
                 new_firm = self.add_subsidiary(firm)

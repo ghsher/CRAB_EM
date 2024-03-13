@@ -14,7 +14,9 @@ from CRAB_agents import *
 
 REGION = 0
 
-model_vars = {
+model_vars = {# -- FLOOD -- #
+			  "Flood": "flood_now",
+			  # -- AGENT COUNTS -- #
 			  "n_agents": 
 			  		lambda m: m.schedule.get_agent_count(),
 			  "n_households": 
@@ -25,8 +27,7 @@ model_vars = {
 			  		lambda m: len(m.get_firms_by_type(ConsumptionGoodFirm, REGION)),
 			  "n_serv_firms": 
 			  		lambda m: len(m.get_firms_by_type(ServiceFirm, REGION)),
-			  "HH consumption": 
-			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
+			  # -- FIRM ATTRIBUTES -- #
 			  "Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
 			  "Export demand": 
@@ -37,12 +38,38 @@ model_vars = {
 			  		lambda m: m.governments[REGION].min_wage,
 			  "Avg wage":
 			  		lambda m: m.governments[REGION].avg_wage,
+
+			  # -- HOUSEHOLD ATTRIBUTES -- #
+			  "Total HH consumption": 
+			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
+			  "Total HH net worth":
+			  		lambda m: sum(hh.net_worth for hh in m.get_households(REGION)),
+			  "Total flood damage":
+			   		lambda m: sum(hh.monetary_damage
+			   					  for hh in m.get_households(REGION)),
+  			  "Adaptation: elevation":
+			  		lambda m: sum(bool(hh.adaptation["Elevation"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
+			  "Adaptation: dry-proofing":
+			  		lambda m: sum(bool(hh.adaptation["Wet_proof"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
+			  "Adaptation: wet-proofing":
+			  		lambda m: sum(bool(hh.adaptation["Dry_proof"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
 			  }
 
-agent_vars = {"Type":
-					lambda a: type(a),
+agent_vars = {
+			  "Type":
+			  		lambda a: type(a),
+			  "Net worth":
+			  		lambda a: getattr(a, "net_worth", None),
+
+			  # # -- FIRM ATTRIBUTES -- #
 			  "Price":
-				  	lambda a: getattr(a, "price", None),
+			  	  	lambda a: getattr(a, "price", None),
 			  "Market share":
 			  		lambda a: getattr(a, "market_share", None)[0]
 			  				  if getattr(a, "market_share", None) is not None
@@ -51,35 +78,27 @@ agent_vars = {"Type":
 			  		lambda a: getattr(a, "prod", None),
 			  "Inventories":
 			  		lambda a: getattr(a, "inventories", None),
-			  "N ordered":
-			  		lambda a: getattr(a, "quantity_ordered", None),
-			  # "Production made":
-			  # 		lambda a: getattr(a, "production_made", None),
-			  # "Sum past demand":
-			  # 		lambda a: sum(getattr(a, "past_demand", None))
+			  # "N ordered":
+			  # 		lambda a: getattr(a, "quantity_ordered", None),
+			  # "Past demand":
+			  # 		lambda a: getattr(a, "past_demand", None)[-1]
 			  # 				  if getattr(a, "past_demand", None) is not None
 			  # 				  else None,
-			  "Past demand":
-			  		lambda a: getattr(a, "past_demand", None)[-1]
-			  				  if getattr(a, "past_demand", None) is not None
-			  				  else None,
 			  "Real demand":
 			  		lambda a: getattr(a, "real_demand", None),
-			  "Demand filled":
-			  		lambda a: getattr(a, "demand_filled", None),
-		  	  "Demand unfilled":
-			  		lambda a: getattr(a, "unfilled_demand", None),
+			  # "Demand filled":
+			  # 		lambda a: getattr(a, "demand_filled", None),
+		  	  # "Demand unfilled":
+			  # 		lambda a: getattr(a, "unfilled_demand", None),
 			  "Wage":
 			  		lambda a: getattr(a, "wage", None),
-			  "Net worth":
-			  		lambda a: getattr(a, "net_worth", None),
-			  "Size":
-			  		lambda a: getattr(a, "size", None),
-			  "Labor demand":
-			  		lambda a: getattr(a, "desired_employees", None),
-			  "Capital amount":
-			  		lambda a: sum(vin.amount
-			  					  for vin in getattr(a, "capital_vintage", None))
-			  				  if getattr(a, "capital_vintage", None) is not None
-			  				  else None,
+			  # "Size":
+			  # 		lambda a: getattr(a, "size", None),
+			  # "Labor demand":
+			  # 		lambda a: getattr(a, "desired_employees", None),
+			  # "Capital amount":
+			  # 		lambda a: sum(vin.amount
+			  # 					  for vin in getattr(a, "capital_vintage", None))
+			  # 				  if getattr(a, "capital_vintage", None) is not None
+			  # 				  else None,
 			  }
