@@ -299,6 +299,8 @@ class Government(Agent):
         info_consumption = FRAC_CONS_INFO * total_consumption
         fin_consumption = FRAC_CONS_FIN * total_consumption
         buss_serv_consumption = FRAC_CONS_SERV * total_consumption
+        # Add flood damage repair expenses to construction sector
+        cons_consumption += self.total_repair_expenses
 
         # service_consumption = total_consumption - goods_consumption
         export_demand_buss_serv = self.demand_RoW * FRAC_CONS_SERV
