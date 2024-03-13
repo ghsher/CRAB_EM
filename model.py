@@ -13,6 +13,7 @@ This class is based on the MESA Model class.
 import itertools
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 from collections import defaultdict
 
@@ -106,19 +107,24 @@ INIT_MK  = {        C26: 0.25,                 # Initial markup
 
 # -- FLOOD ATTRIBUTES -- #
 FLOOD_WHEN = {40: 1000, 80: 100}  # Flood occurrence (timestep: return period)
-
+# -- ADAPTATION ATTRIBUTES -- #
+AVG_HH_CONNECTIONS = 7
 
 class CRAB_Model(Model):
     """Model class for the CRAB model. """
 
     def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
-                 CCA: bool=True) -> None:
+                 CCA: bool=True, social_net: bool=True) -> None:
         """Initialization of the CRAB model.
 
         Args:
             random_seed         : Random seed for model 
-            PMT_weights         : 
+            HH_attributes       : Household attributes from synthetic population file
+            firm_flood_depths   : Firm buildings flood depths per return period
+            PMT_weights         : Weights for household CCA decision-making
+            CCA                 : Boolean (climate change adaptation on/off)
+            social_net          : Boolean (social network on/off)
         """
         super().__init__()
 
@@ -144,7 +150,9 @@ class CRAB_Model(Model):
 
         # -- FLOOD and ADAPTATION ATTRIBUTES -- #
         self.CCA = CCA  # True/False (adaptation on/off)
-        self.PMT_weights = PMT_weights
+        if self.CCA:
+            self.social_net = social_net
+            self.PMT_weights = PMT_weights
 
         # -- INITIALIZE AGENTS -- #
         self.governments = defaultdict(list)
@@ -178,7 +186,15 @@ class CRAB_Model(Model):
                                               N_HOUSEHOLDS[region])
             for _, attributes in HH_attributes.loc[idx].iterrows():
                 self.add_household(region, attributes)
-            # Create government
+            # -- SOCIAL NETWORK -- #
+
+            self.G = nx.watts_strogatz_graph(n=N_HOUSEHOLDS[region],
+                                             k=AVG_HH_CONNECTIONS, p=0)
+            # Relabel nodes for consistency with agent IDs
+            self.G = nx.relabel_nodes(self.G, lambda x: x +
+                                      sum(N_FIRMS[region].values()) + 1)
+            
+            # -- CREATE GOVERNMENT -- #
             self.add_government(region)
 
         # -- CONNECT SUPPLIERS TO CAPITAL FIRMS -- #
@@ -244,6 +260,9 @@ class CRAB_Model(Model):
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
         markup = INIT_MK[type(firm)]
+        # Initialize new supplier randomly
+        suppliers = self.get_firms_by_supplier(type(firm), firm.region)
+        supplier = self.RNGs[type(firm)].choice(suppliers)
         
         if isinstance(firm, CapitalFirm):
             # Initialize productivity as fraction of regional top productivity
@@ -264,9 +283,6 @@ class CRAB_Model(Model):
                              sales=capital_amount, wage=firm.wage, price=firm.price,
                              prod=prod, old_prod=old_prod, lifetime=0)
         elif isinstance(firm, ConsumptionFirm):
-            # Initialize new supplier randomly
-            suppliers = self.get_firms_by_supplier(type(firm), firm.region)
-            supplier = self.RNGs[type(firm)].choice(suppliers)
             prod = supplier.brochure["prod"]
             # Create new firm
             sub = type(firm)(model=self, region=firm.region,

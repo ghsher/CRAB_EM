@@ -187,7 +187,7 @@ class Household(CRAB_Agent):
         vacancies_cons = [firm for firm in self.model.get_cons_firms(self.region)
                           if firm.open_vacancies]
 
-        # First try to find job at capital firm, then search at all firm types
+        # First try to find job at capital firm, then search at other firm types
         for vacancies in [vacancies_cap, vacancies_cons]:
             if vacancies:
                 # Get subset of firm vacancies (bounded rationality)
@@ -370,8 +370,10 @@ class Household(CRAB_Agent):
             self.savings = 0
 
         # -- Repair flood damages -- #
-        self.house_value = gov.avg_wage * self.house_income_ratio
-
+        # Update house value relative to changes in average wage
+        wage_diff = (gov.avg_wage - gov.avg_wage_prev)/gov.avg_wage_prev
+        self.house_value = (self.house_value * (1 + wage_diff)
+                            if wage_diff != 0 else self.house_value)
         # Check if still any damage remaining, otherwise reset repair costs
         if self.monetary_damage > 0:
             self.repair_damage()
@@ -380,6 +382,14 @@ class Household(CRAB_Agent):
 
         # -- Adaptation -- #
         if (self.model.CCA and np.any(list(self.flood_depths.values()))):
+
+            # Get household social network for opinion dynamics
+            if self.model.social_net:
+                neighbor_nodes = list(self.model.G.neighbors(self.unique_id))
+                households = self.model.get_households(self.region)
+                social_network = [self.model.schedule._agents[node]
+                                  for node in neighbor_nodes]
+
             # Implement planned measure if net worth is high enough
             if self.measure_to_impl and (self.net_worth > self.adaptation_costs):
                 self.implement_CCA_measure(self.measure_to_impl)
@@ -393,7 +403,11 @@ class Household(CRAB_Agent):
                 all_measures = ["Dry_proof", "Wet_proof", "Elevation"]
                 for measure in all_measures:
                     if not self.adaptation[measure]:
-                        n_others_adapted = 0
+                        if self.model.social_net:
+                            n_others_adapted = sum([bool(neighbor.adaptation[measure])
+                                                    for neighbor in social_network])
+                        else:
+                            n_others_adapted = 0
                         other_measures = all_measures.copy()
                         other_measures.remove(measure)
                         self.compute_PMT(measure, n_others_adapted,
