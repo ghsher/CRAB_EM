@@ -118,7 +118,8 @@ class Government(Agent):
         # -- LABOR MARKET ATTRIBUTES -- #
         self.min_wage = 1
         self.top_wage = 1
-        self.avg_wage = 0
+        self.avg_wage_prev = 1
+        self.avg_wage = 1
         self.income_pp = 0
         self.unempl_subsidy = 0
 
@@ -244,6 +245,8 @@ class Government(Agent):
 
         # Get regional average wages and unemployment rate
         firms = self.model.get_firms(self.region)
+        # Keep track of old average wage
+        self.avg_wage_prev = self.avg_wage
         self.avg_wage = (sum(firm.wage * firm.size for firm in firms) /
                          sum(firm.size for firm in firms))
         households = self.model.get_households(self.region)

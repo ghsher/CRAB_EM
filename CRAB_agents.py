@@ -371,8 +371,8 @@ class Household(CRAB_Agent):
             self.savings = 0
 
         # -- Repair flood damages -- #
-        self.house_value = gov.avg_wage * self.house_income_ratio
-
+        # Update house value by difference in average wage
+        self.house_value = self.house_value * (gov.avg_wage - gov.avg_wage_prev)
         # Check if still any damage remaining, otherwise reset repair costs
         if self.monetary_damage > 0:
             self.repair_damage()
@@ -381,6 +381,14 @@ class Household(CRAB_Agent):
 
         # -- Adaptation -- #
         if (self.model.CCA and np.any(list(self.flood_depths.values()))):
+
+            # Get household social network for opinion dynamics
+            if self.model.social_net:
+                neighbor_nodes = list(self.model.G.neighbors(self.unique_id))
+                households = self.model.get_households(self.region)
+                social_network = [self.model.schedule._agents[node]
+                                  for node in neighbor_nodes]
+
             # Implement planned measure if net worth is high enough
             if self.measure_to_impl and (self.net_worth > self.adaptation_costs):
                 self.implement_CCA_measure(self.measure_to_impl)
@@ -394,7 +402,11 @@ class Household(CRAB_Agent):
                 all_measures = ["Dry_proof", "Wet_proof", "Elevation"]
                 for measure in all_measures:
                     if not self.adaptation[measure]:
-                        n_others_adapted = 0
+                        if self.model.social_net:
+                            n_others_adapted = sum([bool(neighbor.adaptation[measure])
+                                                    for neighbor in social_network])
+                        else:
+                            n_others_adapted = 0
                         other_measures = all_measures.copy()
                         other_measures.remove(measure)
                         self.compute_PMT(measure, n_others_adapted,
