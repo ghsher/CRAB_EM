@@ -23,11 +23,6 @@ from mesa import Agent
 from CRAB_agents import *
 
 
-import time
-
-
-
-
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST

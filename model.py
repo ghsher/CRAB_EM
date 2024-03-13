@@ -137,8 +137,6 @@ class CRAB_Model(Model):
         # Keep track of firms leaving and entering
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
-        # Keep track of vacancies
-        self.vacancies = defaultdict(list)
 
         # -- DATACOLLECTION -- #
         self.datacollector = DataCollector(model_reporters=model_vars,
@@ -253,7 +251,8 @@ class CRAB_Model(Model):
         Returns:
             firms           : List of selected firms
         """
-        firms = self.firms[region][ConsumptionGoodFirm] + self.firms[region][ServiceFirm]
+        firms = (self.firms[region][ConsumptionGoodFirm] +
+                 self.firms[region][ServiceFirm])
         return firms
 
     def get_firms_by_type(self, firm_type: type, region: int):
@@ -290,8 +289,6 @@ class CRAB_Model(Model):
 
         # -- MODEL STEP: see stages in agent classes for more details -- #
         self.schedule.step()
-        # Reset firm vacancies
-        self.vacancies = defaultdict(list)
 
         # -- REMOVE BANKRUPT FIRMS -- #
         for region in REGIONS:

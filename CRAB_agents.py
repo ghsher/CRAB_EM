@@ -182,12 +182,14 @@ class Household(CRAB_Agent):
         """
 
         # Check if there are firms with open vacancies
-        vacancies_cap = self.model.vacancies[CapitalFirm]
-        vacancies_other = (self.model.vacancies[ConsumptionGoodFirm]
-                           + self.model.vacancies[ServiceFirm])
+        vacancies_cap = [firm for firm in
+                         self.model.get_firms_by_type(CapitalFirm, self.region)
+                         if firm.open_vacancies]
+        vacancies_cons = [firm for firm in self.model.get_cons_firms(self.region)
+                          if firm.open_vacancies]
 
         # First try to find job at capital firm, then search at other firm types
-        for vacancies in [vacancies_cap, vacancies_other]:
+        for vacancies in [vacancies_cap, vacancies_cons]:
             if vacancies:
                 # Get subset of firm vacancies (bounded rationality)
                 N = math.ceil(len(vacancies)/3)
@@ -198,7 +200,7 @@ class Household(CRAB_Agent):
                 employer.employees.append(self)
                 # Close vacancies if firm has enough employees
                 if employer.desired_employees == len(employer.employees):
-                    self.model.vacancies[type(employer)].remove(employer)
+                    employer.open_vacancies = False
                 return employer
             else:
                 continue
@@ -749,11 +751,12 @@ class Firm(CRAB_Agent):
         """
 
         # Bound desired number of employees
+        self.open_vacancies = False
         self.desired_employees = max(1, labor_demand)
 
         # Open vacancies if less employees than desired
         if self.desired_employees > self.size:
-            self.model.vacancies[type(self)].append(self)
+            self.open_vacancies = True
         # Fire employees if more than desired and profits are low
         elif self.desired_employees < self.size:
             # Fire undesired employees

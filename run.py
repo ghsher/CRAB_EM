@@ -37,7 +37,7 @@ for n, seed in enumerate(RANDOM_SEEDS):
 	tic = time.time()
 
 	# -- INITIALIZE MODEL -- #
-	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights, CCA=False)
+	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights, CCA=True)
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
 		model.step()
