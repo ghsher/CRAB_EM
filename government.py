@@ -23,6 +23,11 @@ from mesa import Agent
 from CRAB_agents import *
 
 
+import time
+
+
+
+
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
@@ -110,7 +115,7 @@ def get_quantiles(firms: list, attribute: str,
 class Government(Agent):
     """Government class for the CRAB Model. """
 
-    def __init__(self, model: CRAB_Model, region: int) -> None:
+    def __init__(self, model: CRAB_Model, region: int, CCA_subsidy: bool=False) -> None:
         """Initialize Government agent. """
 
         super().__init__(model.next_id(), model)
@@ -145,8 +150,8 @@ class Government(Agent):
         self.unempl_subsidy = 0
 
         # -- FLOOD-RELATED ATTRIBUTES -- #
-        self.insurance_expenses = 0
-        self.repair_expenses = 0
+        self.CCA_subsidy = CCA_subsidy
+        self.total_repair_expenses = 0
 
     def set_min_wage(self, min_wage_frac: float=0.6,
                      unempl_subsidy_frac: float=1) -> None:
@@ -288,7 +293,6 @@ class Government(Agent):
 
         # Save regional and export demands per consumption sector
         # TODO: We should add this in a loop  dict
-   
         ind_consumption = FRAC_CONS_IND * total_consumption
         cons_consumption = FRAC_CONS_CONS * total_consumption
         trans_consumption = FRAC_CONS_TRANS * total_consumption
@@ -296,16 +300,13 @@ class Government(Agent):
         fin_consumption = FRAC_CONS_FIN * total_consumption
         buss_serv_consumption = FRAC_CONS_SERV * total_consumption
 
-        #service_consumption = total_consumption - goods_consumption
+        # service_consumption = total_consumption - goods_consumption
         export_demand_buss_serv = self.demand_RoW * FRAC_CONS_SERV
         export_demand_ind = self.demand_RoW * FRAC_CONS_IND
         export_demand_cons = self.demand_RoW * FRAC_CONS_CONS
         export_demand_trans = self.demand_RoW * FRAC_CONS_TRANS
         export_demand_info = self.demand_RoW * FRAC_CONS_INFO
         export_demand_fin = self.demand_RoW * FRAC_CONS_FIN
-    
-
-
     
         self.regional_demands[Business_services] = round(buss_serv_consumption, 3)
         self.export_demands[Business_services] = round(export_demand_buss_serv, 3)
@@ -319,8 +320,6 @@ class Government(Agent):
         self.export_demands[Information] = round(export_demand_info, 3)
         self.regional_demands[Finance] = round(fin_consumption, 3)
         self.export_demands[Finance] = round(export_demand_fin, 3)
-
-
 
     def stage6(self) -> None:
         """Sixth stage of Government step function. """

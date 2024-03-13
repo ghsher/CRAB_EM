@@ -9,17 +9,26 @@ Script to run the CRAB model and save macro (model level)
 and micro (agent level) outputs.
 
 """
+
 import os
 import time
 import numpy as np
+import pandas as pd
 
 from tqdm.auto import tqdm
 
 from model import CRAB_Model
 
+# -- READ FILES -- #
+HH_attributes = pd.read_csv("Input/HH_attributes.csv", index_col=0)
+firm_flood_depths = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
+PMT_weights = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+
+# -- MODEL PARAMETERS -- #
 STEPS = 300
 N_RUNS = 10
 RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
+
 
 for n, seed in enumerate(RANDOM_SEEDS):
 	print("RUN NR.", n+1)
@@ -27,7 +36,7 @@ for n, seed in enumerate(RANDOM_SEEDS):
 	tic = time.time()
 
 	# -- INITIALIZE MODEL -- #
-	model = CRAB_Model(seed)
+	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights, CCA=False)
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
 		model.step()

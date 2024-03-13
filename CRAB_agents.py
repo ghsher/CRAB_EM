@@ -10,8 +10,10 @@ Both are based on a CRAB_Agent parent class, containing all shared functions
 for any agent in the CRAB model.
 The Household class is a simple agent that can engage in labor search to find a job
 at one of the Firms.
-There are three types of Firms: CapitalFirms, ConsumptionGoodFirms and ServiceFirms.
-The CapitalFirms supply machines to the Consum
+There are three types of Firms: CapitalFirms, and two types of ConsumptionFirms:
+ConsumptionGoodFirms and ServiceFirms.
+The CapitalFirms supply machines to other CapitalFirms and to ConsumptionFirms,
+which they use to provide goods and services to households for consumption.
 
 """
 
@@ -25,22 +27,33 @@ if TYPE_CHECKING:
 import numpy as np
 import math
 import bisect
+from scipy.stats import bernoulli
 from collections import deque
 from mesa import Agent
 
 
 # -- FIRM INITIALIZATION VALUES -- #
-PROD_DIST = (1.05, 0.02)  # Normal distribution (mean, std) of initial wages
-WAGE_DIST = (1, 0.02)  # Normal distribution (mean, std) of initial productivity
+PROD_DIST = (1.05, 0.02)  # Normal distribution (mean, std) of initial productivity
+WAGE_DIST = (1, 0.02)     # Normal distribution (mean, std) of initial wages
 
 # -- FIRM CONSTANTS -- #
 INTEREST_RATE = 0.01
 DEBT_SALES_RATIO = 2   # Ratio affordable debt : sales
 
+# -- FLOOD CONSTANTS -- #
+DAMAGE_CURVES = {"Residential":
+                    {"Depth": [0, 0.5, 1, 1.5, 2, 3, 4, 5],
+                     "Damage": [0, 0.06, 0.13, 0.18, 0.23, 0.28, 0.32, 0.4]},
+                 "Industry":
+                    {"Depth": [0, 0.5, 1, 1.5, 2, 3, 4, 5, 6],
+                     "Damage": [0, 0.24, 0.37, 0.47, 0.55, 0.69, 0.82, 0.91, 1]}}
+DAMAGE_REDUCTION = {"Elevation": 3, "Dry_proof": 0.4, "Wet_proof": 0.5}
+# -- ADAPTATION CONSTANTS -- #
+CCA_COSTS = {"Elevation": 2, "Dry_proof": 0.5, "Wet_proof": 1}
 
 def systemic_tax(profits: list, sales: float, quintiles: list,
                  taxes: list=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) -> None:
-    """
+    """Returns tax for given profits and sales.
 
     Args:
         profits         : List of firm profits per region
@@ -64,10 +77,27 @@ def systemic_tax(profits: list, sales: float, quintiles: list,
     return tax_rate * profits
 
 
+def depth_to_damage(building_type: str, flood_depth: float) -> float:
+    """Returns damage coefficient from flood depth for given building type.
+
+    Args:
+        building_type       : Type of building ("Residential" or "Industry")
+        flood_depth         : Depth of flood
+    Returns:
+        damage_coef         : Damage coefficient
+    """
+    # Get (depth, damage) datapoints for depth-damage curve of building type
+    depths = DAMAGE_CURVES[building_type]["Depth"]
+    damages = DAMAGE_CURVES[building_type]["Damage"]
+    # Interpolate between known datapoints
+    damage_coef = np.interp(flood_depth, depths, damages)
+    return damage_coef
+
+
 class CRAB_Agent(Agent):
     """Class representing an actor (firm or household) in the CRAB model. """
 
-    def __init__(self, model: CRAB_Model, region: int) -> None:
+    def __init__(self, model: CRAB_Model, region: int, flood_depths: dict) -> None:
         """Initializes an agent in the CRAB model.
         
         Args:
@@ -81,6 +111,11 @@ class CRAB_Agent(Agent):
         self.region = region
         self.lifetime = 1
 
+        # -- FLOOD ATTRIBUTES -- #
+        self.flood_depths = flood_depths
+        self.flood_depth_now = 0
+        self.monetary_damage = 0
+
     def stage8(self):
         """General CRAB Agent last stage of step function: increase lifetime."""
         self.lifetime += 1        
@@ -89,30 +124,55 @@ class CRAB_Agent(Agent):
 class Household(CRAB_Agent):
     """Class representing a household in the CRAB model. """
 
-    def __init__(self, model: CRAB_Model, region: int) -> None:
+    def __init__(self, model: CRAB_Model, region: int, HH_attributes: pd.Series) -> None:
         """Initialize household agent.
         
         Args:
             model           : Model object containing the household
             region          : Home region of this household
         """
-        super().__init__(model, region)
+
+        # -- FLOOD DEPTHS -- # 
+        flood_depths = HH_attributes.filter(regex="Flood depth")
+        flood_depths = {int(RP.lstrip("Flood depth RP")): depth
+                        for RP, depth in flood_depths.items()}
+        super().__init__(model, region, flood_depths)
 
         # -- SOCIO-ECONOMIC ATTRIBUTES -- #
-        self.education = self.model.RNGs[type(self)].integers(0, 5)
+        self.education = HH_attributes["Education"]
 
         # -- FINANCIAL ATTRIBUTES -- #
-        self.net_worth = 0
         self.consumption = 1
-        self.house_income_ratio = self.model.RNGs[type(self)].uniform(4, 80)
+        self.net_worth = HH_attributes["savings_norm"]
+        self.house_income_ratio = HH_attributes["House:income ratio"]
         self.house_value = self.house_income_ratio
 
         # -- LABOR MARKET ATTRIBUTES -- #
         self.employer = None
         self.wage = 1
 
-        # -- FLOODING ATTRIBUTES -- #
-        self.monetary_damage = 0
+        # -- FLOOD ATTRIBUTES -- #
+        self.adaptation = {"Elevation": 0,      # Elevation     (Height)
+                           "Wet_proof": False,  # Wet-proofed   (True/False)
+                           "Dry_proof": 0}      # Dry-proofed   (Age)
+        self.repair_expenses = 0
+        self.adaptation_costs = 0
+        self.measure_to_impl = None
+        # -- Adaptation attributes -- #
+        self.perc_damage = HH_attributes["Flood damage"]
+        self.perc_prob = HH_attributes["Flood probability"]
+        self.worry = HH_attributes["Worry"]
+        self.flood_experience = HH_attributes["Flood experience"]
+        self.CCA_perc = {"Elevation": {"Response efficacy": HH_attributes["RE elevation"],
+                                       "Self efficacy": HH_attributes["SE elevation"],
+                                       "Perceived cost": HH_attributes["PC elevation"]},
+                         "Wet_proof": {"Response efficacy": HH_attributes["RE wet"],
+                                       "Self efficacy": HH_attributes["SE wet"],
+                                       "Perceived cost": HH_attributes["PC wet"]},
+                         "Dry_proof": {"Response efficacy": HH_attributes["RE dry"],
+                                       "Self efficacy": HH_attributes["SE dry"],
+                                       "Perceived cost": HH_attributes["PC dry"]}}
+        self.social_exp = HH_attributes["Social expectations"]
 
     def labor_search(self) -> Firm:
         """ Labor search performed by Household agents.
@@ -121,15 +181,14 @@ class Household(CRAB_Agent):
             employer        : Firm object where household will be employed
         """
 
-        # Check if there are firms with open vacancies
-        #vacancies_cap = [firm for firm in
-         #                self.model.get_firms_by_type(CapitalFirm, self.region)
-          #               if firm.open_vacancies]
-        vacancies_all = [firm for firm in self.model.get_firms(self.region)
+        # Get firms with open vacancies
+        vacancies_cap = [firm for firm in self.model.get_cap_firms(self.region)
                          if firm.open_vacancies]
+        vacancies_cons = [firm for firm in self.model.get_cons_firms(self.region)
+                          if firm.open_vacancies]
 
         # First try to find job at capital firm, then search at all firm types
-        for vacancies in [vacancies_all]:
+        for vacancies in [vacancies_cap, vacancies_cons]:
             if vacancies:
                 # Get subset of firm vacancies (bounded rationality)
                 N = math.ceil(len(vacancies)/3)
@@ -148,8 +207,126 @@ class Household(CRAB_Agent):
         # Return None if search remains unsuccessful
         return None
 
+    def flood_damage(self) -> None:
+        """Calculate total damage to property for this household. """
+
+        # Adjust flood depth for elevation level
+        if self.adaptation["Elevation"]:
+            self.flood_depth_now -= self.adaptation["Elevation"]
+        # Get damage coefficient from flood depth
+        self.damage_coef = depth_to_damage("Residential", self.flood_depth_now)
+
+        # Reduce damage when wet- or dry_proofed
+        if self.adaptation["Dry_proof"] == 1 and self.flood_depth_now < 1:
+            self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+        if self.adaptation["Wet_proof"]:
+            self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Wet_proof"])
+        # Compute monetary damage
+        self.monetary_damage += self.house_value * self.damage_coef
+        self.flood_experience = 1
+
+    def repair_damage(self) -> None:
+        """Repair remaining flood damage and adjust consumption. """
+
+        # Reduce savings to repair damage
+        repair_savings = min(self.monetary_damage, self.net_worth)
+        self.net_worth = max(0, self.net_worth - repair_savings)
+
+        # Reduce consumption by reparation expenses
+        gov = self.model.governments[self.region]
+        repair_consumption = max(0, self.consumption - gov.unempl_subsidy)
+        self.consumption = max(0, self.consumption - repair_consumption)
+        
+        # Repair damages if affordable with consumption + savings
+        self.repair_expenses += repair_savings + repair_consumption 
+        if self.repair_expenses > self.monetary_damage:
+            # Add repair expenses to regional total
+            gov.total_repair_expenses += self.repair_expenses
+            self.monetary_damage = 0
+
+    def compute_PMT(self, measure: str, n_others_adapted: int,
+                    other_measure_1: bool, other_measure_2: bool) -> None:
+        """Household climate change adaptation (CCA) decision-making, based on
+           Protection Motivation Theory (PMT).
+           Weights are determined from survey data, see:
+                Noll et al. (2022). https://doi.org/10.1038/s41558-021-01222-3
+                Taberna et al. (2023). https://doi.org/10.1038/s41598-023-46318-2
+
+        Args:
+            measure             : CCA measure to consider
+            n_others_adapted    : Fraction of other households in social network
+                                  that have already taken this measure
+            other_measure_1     : Other measure (1) already taken? (True/False)
+            other_measure_2     : Other measure (2) already taken? (True/False)
+                                     Please note the order of measure (1) and (2)
+                                     should correspond to the PMT_weights file
+        """
+
+        # Get PMT weights for this measure
+        weights = self.model.PMT_weights[measure]
+        # Get PMT attributes (in right order to correspond to weights)
+        PMT_attrs = [1,
+                     self.perc_damage,
+                     self.perc_prob,
+                     self.worry,
+                     self.worry * self.perc_damage,
+                     self.CCA_perc[measure]["Response efficacy"],
+                     self.CCA_perc[measure]["Self efficacy"],
+                     self.CCA_perc[measure]["Perceived cost"],
+                     self.flood_experience,
+                     self.social_exp,
+                     n_others_adapted,
+                     n_others_adapted * self.social_exp,
+                     other_measure_1,
+                     other_measure_2]
+        # Get weighted average of attributes
+        y_hat = np.dot(weights.dropna(), PMT_attrs)
+        # Take inverse logit function for adaptation (intention) probability
+        y_hat = round(min(1, np.exp(y_hat)/(1 + np.exp(y_hat))), 2)
+
+        # Bernoulli draw for intention-action barrier
+        if y_hat > 0 and self.model.RNGs["Adaptation"].binomial(1, y_hat/4):
+            self.measure_to_impl = measure
+            self.adaptation_costs = CCA_COSTS[measure]
+
+            # If measure is subsidized: immediately take action
+            gov = self.model.governments[self.region]
+            if gov.CCA_subsidy == True:
+                # Implement measure (for elevation: set equal to new height)
+                self.adaptation[measure] = (DAMAGE_REDUCTION["Elevation"]
+                                            if measure == "Elevation" else 1)
+                self.adaptation_costs = 0
+                self.measure_to_impl = None
+
+    def implement_CCA_measure(self, measure) -> None:
+        """Implement specified adaptation measure.
+
+        Args:
+            measure         : Adaptation measure ("Elevation", "Dry_proof")
+        """
+
+        # Spend costs and keep track of expenses by government
+        gov = self.model.governments[self.region]
+        self.net_worth -= self.adaptation_costs
+        gov.total_repair_expenses += self.adaptation_costs
+        # Implement measure (for elevation: set equal to new height)
+        self.adaptation[measure] = (DAMAGE_REDUCTION["Elevation"]
+                                    if measure == "Elevation" else 1)
+        # Adjust perceived damage with response efficacy
+        resp_eff = self.CCA_perc[self.measure_to_impl]["Response efficacy"]
+        self.perc_damage = (self.perc_damage * resp_eff)
+        # Reset adaptation implementation variables
+        self.adaptation_costs = 0
+        self.measure_to_impl = None
+
     def stage1(self) -> None:
-        pass
+        """First stage of household step function: flood shock. """
+        
+        # -- Flood shock -- #
+        if self.model.flood_now:
+            # Get flood depth for this return period
+            self.flood_depth_now = self.flood_depths[self.model.flood_return]
+            self.flood_damage()
 
     def stage2(self) -> None:
         pass
@@ -174,13 +351,64 @@ class Household(CRAB_Agent):
             self.wage = self.employer.wage
 
     def stage5(self) -> None:
-        """Fifth stage of Household step function: consumption. """
+        """Fifth stage of Household step function:
+           1) Consumption
+           2) Repair possible damages from flood
+           3) Adaptation
+        """
 
         # -- Consumption -- #
-        gov = self.model.governments[self.region]
         self.consumption = self.wage
-        self.savings = 0
+        # If HH is employed, planning to do adaptation, and there is no subsidy,
+        # spend minimum amount (equal to unempl subsidy) on consumption, save rest
+        gov = self.model.governments[self.region]
+        if (self.employer and self.adaptation_costs > 0 and not gov.CCA_subsidy):
+            self.savings = max(0, self.consumption - gov.unempl_subsidy)
+            self.consumption -= self.savings
+            self.net_worth += self.savings
+        else:
+            self.savings = 0
+
+        # -- Repair flood damages -- #
         self.house_value = gov.avg_wage * self.house_income_ratio
+
+        # Check if still any damage remaining, otherwise reset repair costs
+        if self.monetary_damage > 0:
+            self.repair_damage()
+        else:
+            self.repair_expenses = 0
+
+        # -- Adaptation -- #
+        if (self.model.CCA and np.any(list(self.flood_depths.values()))):
+            # Implement planned measure if net worth is high enough
+            if self.measure_to_impl and (self.net_worth > self.adaptation_costs):
+                self.implement_CCA_measure(self.measure_to_impl)
+            
+            # Consider taking adaptation action every year if nothing planned yet
+            # and there are still measures to be implemented
+            if (self.lifetime % 4 == 0 and self.measure_to_impl is None
+                    and not np.all(list(self.adaptation.values()))):
+
+                # Get all measure (in order of consideration)
+                all_measures = ["Dry_proof", "Wet_proof", "Elevation"]
+                for measure in all_measures:
+                    if not self.adaptation[measure]:
+                        n_others_adapted = 0
+                        other_measures = all_measures.copy()
+                        other_measures.remove(measure)
+                        self.compute_PMT(measure, n_others_adapted,
+                                         self.adaptation[other_measures[0]],
+                                         self.adaptation[other_measures[1]])
+
+                    elif self.adaptation[measure]:
+                        # If dry-proofing implemented: increase its age
+                        self.adaptation["Dry_proof"] += 1
+                        # Dry-proofing only lasts 20 years, remove if older
+                        if self.adaptation["Dry_proof"] >= 80:
+                            self.adaptation["Dry_proof"] = 0
+                            # Adjust perceived damage
+                            resp_eff = self.CCA_perc["Dry_proof"]["Response efficacy"]
+                            self.perc_damage = (self.perc_damage / resp_eff)
 
     def stage6(self) -> None:
         pass
@@ -196,19 +424,34 @@ class Household(CRAB_Agent):
 class Firm(CRAB_Agent):
     """Class representing a firm in the CRAB model. """
 
-    def __init__(self, model: CRAB_Model, region: int, market_share: float,
-                 net_worth: int, init_n_machines: int, init_cap_amount: int,
-                cap_out_ratio: float, markup: float,
-                 sales: int=10, wage: float=None, price: float=None,
-                 prod: float=None, old_prod: float=None, lifetime: int=1) -> None:
+    def __init__(self, model: CRAB_Model, region: int, flood_depths: dict,
+                 market_share: float, net_worth: int,
+                 init_n_machines: int, init_cap_amount: int,
+                 cap_out_ratio: float, markup: float, sales: int=10,
+                 wage: float=None, price: float=None, prod: float=None,
+                 old_prod: float=None, lifetime: int=1) -> None:
         """Initialize firm agent.
 
         Args:
             model               : Model object containing the firm
             region              : Home region of this firm
+            flood_depths        : Firm building flood depths per flood return period
+            market_share        : Initial firm market share
+            net_worth           : Initial net worth
+            init_n_machines     : Initial number of machines
+            init_cap_amount     : Initial capital amount
+            cap_out_ratio       : Capital output ratio
+            markup              : Initial markup
+            sales               : Initial sales
+            wage                : Inital wage
+            price               : Initial price
+            prod                : Initial productivity
+            old_prod            : Productivity in previous timestep
+            lifetime            : Current firm lifetime
         """
 
-        super().__init__(model, region)
+        # -- FLOOD ATTRIBUTES -- #
+        super().__init__(model, region, flood_depths)
 
         # -- GENERAL FIRM ATTRIBUTES -- #
         self.lifetime = lifetime
@@ -222,10 +465,10 @@ class Firm(CRAB_Agent):
         self.size = 0
 
         # -- CAPITAL GOODS MARKET ATTRIBUTES -- #
-        self.wage = wage if wage else model.RNGs[type(self)].normal(WAGE_DIST[0], WAGE_DIST[1])
-        self.prod =  prod if prod else model.RNGs[type(self)].normal(PROD_DIST[0], PROD_DIST[1])
-
-
+        self.wage = wage if wage else model.RNGs[type(self)].normal(WAGE_DIST[0],
+                                                                    WAGE_DIST[1])
+        self.prod = prod if prod else model.RNGs[type(self)].normal(PROD_DIST[0],
+                                                                    PROD_DIST[1])
         self.old_prod = old_prod if old_prod else self.prod
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
@@ -244,10 +487,6 @@ class Firm(CRAB_Agent):
         self.market_share = np.repeat(market_share, self.model.n_regions + 1)
         self.market_share_history = deque([])
 
-        # -- FLOOD DAMAGE ATTRIBUTES -- #
-        self.damage_coeff = 0
-        
-
     class Vintage:
         """Class representing a vintage that consists of multiple
            machines of the same age, lifetime and productivity. """
@@ -265,7 +504,11 @@ class Firm(CRAB_Agent):
             self.lifetime = firm.model.RNGs[type(firm)].normal(20, 10)
 
     def update_capital(self) -> None:
-        """Update capital: get ordered machines and remove old machines."""
+        """Update capital:
+           1) Handle flood damage to inventories
+           2) Get ordered machines
+           3) Remove old machines
+        """
 
         # Handle orders if they are placed
         if self.supplier is not None and self.quantity_ordered > 0:
@@ -313,8 +556,7 @@ class Firm(CRAB_Agent):
             self.past_demand.popleft()
         self.past_demand.append(self.real_demand)
 
-        expected_demand = sum(self.past_demand) / len(self.past_demand)
-
+        expected_demand = np.mean(self.past_demand)
         # Get desired level of inventories
         des_inv_level = inv_frac * expected_demand
         # Get desired production from inventory levels and demand
@@ -326,7 +568,7 @@ class Firm(CRAB_Agent):
 
         # If capital stock is too low: expand firm (buy more capital)
         if self.feasible_production < desired_prod:
-            n_expansion = round( (desired_prod - self.feasible_production) *
+            n_expansion = (round(desired_prod - self.feasible_production) *
                            self.cap_out_ratio)
         else:
             n_expansion = 0
@@ -363,7 +605,7 @@ class Firm(CRAB_Agent):
                 n_replacements += vintage.amount
         return n_replacements
 
-    def place_order(self, n_expansion: int, n_replacements: int):
+    def place_order(self, n_expansion: int, n_replacements: int) -> int:
         """Choose supplier and place the order of machines.
 
         Args:
@@ -452,7 +694,7 @@ class Firm(CRAB_Agent):
             self.debt = max(0, self.debt - self.order_reduced * self.supplier.price)
         self.order_reduced = 0
 
-    def get_avg_prod(self):
+    def get_avg_prod(self) -> float:
         """Get average firm productivity.
 
         Returns:
@@ -515,7 +757,7 @@ class Firm(CRAB_Agent):
             # gov.tax_revenues += tax
             self.net_worth -= tax
 
-    def hire_and_fire(self, labor_demand: int):
+    def hire_and_fire(self, labor_demand: int) -> None:
         """Hire (open vacancies) or fire employees based on labor demand,
            current number of employees, profits and wage.
 
@@ -523,7 +765,7 @@ class Firm(CRAB_Agent):
             labor_demand        : Firm's demand for labor
         """
 
-        # Reset vacancies and bound desired number of employees
+        # Bound desired number of employees
         self.open_vacancies = False
         self.desired_employees = max(1, labor_demand)
 
@@ -570,13 +812,34 @@ class Firm(CRAB_Agent):
             supplier.clients.remove(self)
 
     def stage1(self) -> None:
-        """First stage of firm step function: update capital and reset debt. """
+        """First stage of firm step function:
+           flood damage, update capital and reset debt. """
+
+        # -- FLOOD SHOCK: compute damage coefficient -- #
+        if self.model.flood_now:
+            self.damage_coef = depth_to_damage("Industry", self.flood_depth_now)
+        else:
+            self.damage_coef = 0
+
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            for vintage in self.capital_vintage:
+                # If Bernoulli is successful: vintage is destroyed
+                if self.model.RNGs[(type(self))].binomial(1, self.damage_coef):
+                    self.capital_vintage.remove(vintage)
+                    del vintage
+
         self.update_capital()
         self.debt = 0
 
     def stage3(self) -> None:
         """Third stage of firm step function: set wages. """
         self.set_wage()
+
+    def stage4(self) -> None:
+        """Fourth stage of firm step function: destroy productivity (by flood). """
+        if self.damage_coef:
+            self.prod -= self.prod * self.damage_coef
 
 
 class CapitalFirm(Firm):
@@ -608,26 +871,22 @@ class CapitalFirm(Firm):
       self.price = round((1 + markup) * self.cost, 3)
 
     def advertise(self) -> list[int]:
-        """Advertise products: """
+        """Advertise: create new brochures, select new clients, send brochures."""
 
         # Create brochures
         self.brochure = {"prod": self.prod, "price": self.price}
 
         # Randomly sample other firms to become clients
-        firms = self.model.get_firms_by_buyer(type(self),self.region)
-        if self in firms:
-            firms.remove(self)
+        firms = list(set(self.model.get_firms(self.region)) - set([self]))
         if len(self.clients) > 1:
             # Number of new clients is fraction of number of current clients
             N = 1 + round(len(self.clients) * 0.2)
         else:
             # If no clients yet: sample fixed number of new clients
             N = 10
-        new_clients = self.model.RNGs[type(self)].choice(firms, N)
-
+        new_clients = self.model.RNGs[type(self)].choice(firms, N, replace=False)
         # Add potential clients to own clients, avoid duplicates
-        new_clients = new_clients[~np.isin(new_clients, self.clients)]
-        self.clients = list(np.append(self.clients, new_clients))
+        clients = list(set(self.clients + list(new_clients)))
 
         # Send brochure to chosen firms
         for client in self.clients:
@@ -651,11 +910,6 @@ class CapitalFirm(Firm):
         # Get unfilled demand and update inventories
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
-
-        #if self.lifetime  < 10:
-         #   self.inventories = 0.1 * self.real_demand
-          #  self.unfilled_demand = 0
-    
 
         # If demand cannot be filled: cancel or reduce orders
         if self.demand_filled < self.real_demand:
@@ -687,7 +941,10 @@ class CapitalFirm(Firm):
 
     def stage1(self) -> None:
         """First stage of capital firm step function:
-           Update capital, cost, price and advertise own machines. """
+           1) Compute flood damage
+           2) update capital, cost and price
+           3) Advertise own machines.
+        """
 
         # First inherit functionality of Firm agents (here: update capital)
         super().stage1()
@@ -700,8 +957,12 @@ class CapitalFirm(Firm):
     def stage2(self) -> None:
         """Second stage of capital firm step function: expand and replace machines."""
 
-        # Check options to expand or replace machines
+        # Decide whether to expand
         n_expansion = self.capital_investment()
+        # If flood: destroy part of inventories
+        if self.damage_coef > 0:
+            self.inventories -= self.damage_coef * self.inventories
+        # Decide whether to replace capital
         n_replacements = self.replace_capital()
 
         # Check if net worth allows to make investments
@@ -730,7 +991,8 @@ class CapitalFirm(Firm):
         self.hire_and_fire(labor_demand)
 
     def stage4(self) -> None:
-        pass
+        """Fourth stage of capital firm step function: destroy productivity."""
+        super().stage4()
 
     def stage5(self) -> None:
         """Fifth stage of Capital firm step function. """
@@ -787,6 +1049,7 @@ class CapitalFirm(Firm):
         super().stage8()
 
 
+# -- CAPITAL FIRM SECTORS -- #
 class C26(CapitalFirm):
     """Class representing a Manufacture of computer, electronic and 
         optical product (NACE C26) in the CRAB model. """
@@ -798,6 +1061,7 @@ class C26(CapitalFirm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
+
 
 class C27(CapitalFirm):
     """Class representing a Manufacture of electrical
@@ -811,6 +1075,7 @@ class C27(CapitalFirm):
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
 
+
 class C28(CapitalFirm):
     """Class representing a Manufacture of machinery 
         and equipment n.e.c. (NACE C28) in the CRAB model. """
@@ -822,6 +1087,8 @@ class C28(CapitalFirm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
+
+
 class C29(CapitalFirm):
     """Class representing a Manufacture of motor vehicles,
        trailers and semi-trailers (NACE C29) in the CRAB model. """
@@ -834,6 +1101,7 @@ class C29(CapitalFirm):
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
 
+
 class C30(CapitalFirm):
     """Class representing a	Manufacture of other transport equipment
        (NACE C30) in the CRAB model. """
@@ -845,8 +1113,8 @@ class C30(CapitalFirm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
-    
 
+# -------------------------- #
 
 
 class ConsumptionFirm(Firm):
@@ -897,7 +1165,7 @@ class ConsumptionFirm(Firm):
         self.cost = self.wage / self.prod if (self.prod > 0) else self.wage
 
         # Compute (bounded) markup from market share history
-        if len(self.market_share_history) > 1:
+        if len(self.market_share_history) > 1 and self.market_share_history[-2] > 0:
             self.markup = max(0.01, min(0.4,
                               round(self.markup * (1 + v *
                                     ((self.market_share_history[-1] -
@@ -934,13 +1202,18 @@ class ConsumptionFirm(Firm):
         self.market_share = np.around(MS, 8)
 
     def stage1(self) -> None:
-        """First stage of consumption firm step function. """
+        """First stage of consumption firm step function:
+           Flood damage, update capital, place machine orders."""
 
-        # Inherit Firm class function: update capital
+        # Inherit Firm class function: flood damage and update capital
         super().stage1()
 
-        # Check options to expand or replace machines
+        # Decide whether to expand
         n_expansion = self.capital_investment()
+        # If flood: destroy part of inventories
+        if self.damage_coef > 0:
+            self.inventories -= self.damage_coef * self.inventories
+        # Decide whether to replace capital
         n_replacements = self.replace_capital()
 
         # Check if net worth allows to make investments
@@ -966,7 +1239,10 @@ class ConsumptionFirm(Firm):
         self.hire_and_fire(labor_demand)
 
     def stage4(self) -> None:
-        """Fourth stage of consumption firm step function. """
+        """Fourth stage of consumption firm step function:
+           1) Destroy productivity
+           2) Compete and sell
+        """
         self.compete_and_sell()
 
     def stage5(self) -> None:
@@ -1010,7 +1286,8 @@ class ConsumptionFirm(Firm):
 
         # Compute real demand from regional demand, market shares and price
         self.real_demand = np.round(sum([gov.regional_demands[type(self)],
-                                         gov.export_demands[type(self)]]   * self.market_share) / self.prod, 3)
+                                         gov.export_demands[type(self)]] 
+                                         * self.market_share) / self.prod, 3)
         # Check available stock
         self.production_made = self.size * self.prod
         stock_available = self.production_made + self.inventories
@@ -1018,12 +1295,6 @@ class ConsumptionFirm(Firm):
         self.demand_filled = min(stock_available, self.real_demand)
         self.unfilled_demand = max(0, self.real_demand - stock_available)
         self.inventories = max(0, stock_available - self.real_demand)
-
-        #if self.life < 10:
-         #   self.inventories = 0.1 * self.real_demand
-          #  self.unfilled_demand = 0
-
-
 
         # -- ACCOUNTING -- #
         # If order is canceled: reset order and investment cost
@@ -1065,8 +1336,7 @@ class ConsumptionFirm(Firm):
         super().stage8()
 
 
-
-
+# -- CONSUMPTION FIRM SECTORS -- #
 class Industry(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
@@ -1075,8 +1345,6 @@ class Industry(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
 
 class Construction(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
@@ -1086,8 +1354,6 @@ class Construction(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
 
 class Transport(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
@@ -1097,8 +1363,7 @@ class Transport(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
+
 class Information(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
@@ -1107,8 +1372,7 @@ class Information(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
+
 class Finance(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
@@ -1117,8 +1381,6 @@ class Finance(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
 
 class Business_services(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
@@ -1128,8 +1390,6 @@ class Business_services(ConsumptionFirm):
 
         super().__init__(**kwargs)
 
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
 
 '''
 class Agriculture(ConsumptionFirm):
@@ -1155,3 +1415,5 @@ class Recreation(ConsumptionFirm):
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
 '''
+
+# ------------------------------ #

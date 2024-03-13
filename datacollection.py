@@ -14,37 +14,39 @@ from CRAB_agents import *
 
 REGION = 0
 
-model_vars = {
-			"n_agents": 
+model_vars = {# -- FLOOD -- #
+			  "Flood": "flood_now",
+			  # -- AGENT COUNTS -- #
+			  "n_agents": 
 			  		lambda m: m.schedule.get_agent_count(),
-			"n_households": 
+			  "n_households": 
 			  		lambda m: len(m.get_households(REGION)),
-			"n_c26_firms": 
+			  "n_c26_firms": 
 		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
-            "n_c27_firms":
+              "n_c27_firms":
 					lambda m: len(m.get_firms_by_type(C27, REGION)),
-            "n_c28_firms":
+              "n_c28_firms":
 					lambda m: len(m.get_firms_by_type(C28, REGION)),
-            "n_c29_firms":
+              "n_c29_firms":
 					lambda m: len(m.get_firms_by_type(C29, REGION)),
-            "n_c30_firms":
+              "n_c30_firms":
 					lambda m: len(m.get_firms_by_type(C30, REGION)),
-			"n_ind_firms": 
+			  "n_ind_firms": 
 			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
-            "n_cons_firms": 
+              "n_cons_firms": 
 		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
-			"n_trans_firms": 
+			  "n_trans_firms": 
 			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
-			"n_inf_firms": 
+			  "n_inf_firms": 
 			  		lambda m: len(m.get_firms_by_type(Information, REGION)),
-			"n_fin_firms": 
+			  "n_fin_firms": 
 			  		lambda m: len(m.get_firms_by_type(Finance, REGION)),
-			"n_rec_firms": 
+			  "n_rec_firms": 
 			  		lambda m: len(m.get_firms_by_type(Business_services, REGION)),
                 
-			"HH consumption": 
+			  "HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			"Regional demand":
+			  "Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
 			"Export demand": 
 			  		lambda m: sum(m.governments[REGION].export_demands.values()),
@@ -57,10 +59,15 @@ model_vars = {
 			  		lambda m: m.governments[REGION].avg_wage,
 			}
 
-agent_vars = {"Type":
-					lambda a: type(a),
+agent_vars = {
+			  "Type":
+			  		lambda a: type(a),
+			  "Net worth":
+			  		lambda a: getattr(a, "net_worth", None),
+
+			  # # -- FIRM ATTRIBUTES -- #
 			  "Price":
-				  	lambda a: getattr(a, "price", None),
+			  	  	lambda a: getattr(a, "price", None),
 			  "Market share":
 			  		lambda a: getattr(a, "market_share", None)[0]
 			  				  if getattr(a, "market_share", None) is not None
@@ -73,7 +80,7 @@ agent_vars = {"Type":
 			  		lambda a: getattr(a, "quantity_ordered", None),
 			  "Production made":
 			  		lambda a: getattr(a, "production_made", None),
-			"Feasible production":
+			  "Feasible production":
 			  		lambda a: getattr(a, "feasible_production", None),
 			  "Sum past demand":
 			  		lambda a: sum(getattr(a, "past_demand", None))
@@ -85,6 +92,10 @@ agent_vars = {"Type":
 			  				  else None,
 			  "Real demand":
 			  		lambda a: getattr(a, "real_demand", None),
+			  # "Demand filled":
+			  # 		lambda a: getattr(a, "demand_filled", None),
+		  	  # "Demand unfilled":
+			  # 		lambda a: getattr(a, "unfilled_demand", None),
 			  "Wage":
 			  		lambda a: getattr(a, "wage", None),
 			  "Net worth":
