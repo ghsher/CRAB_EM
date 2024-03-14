@@ -11,7 +11,6 @@ and micro (agent level) outputs.
 """
 
 import os
-import time
 import numpy as np
 import pandas as pd
 
@@ -33,8 +32,6 @@ RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
 for n, seed in enumerate(RANDOM_SEEDS):
 	print("RUN NR.", n+1)
 
-	tic = time.time()
-
 	# -- INITIALIZE MODEL -- #
 	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights,
 					   CCA=True, social_net=True)
@@ -42,9 +39,6 @@ for n, seed in enumerate(RANDOM_SEEDS):
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
 		model.step()
-
-	toc = time.time()
-	print("TIME TO RUN MODEL: ", toc-tic)
 
 	# -- COLLECT OUTPUT -- #
 	if not os.path.isdir("results"):
