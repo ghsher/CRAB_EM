@@ -11,7 +11,6 @@ and micro (agent level) outputs.
 """
 
 import os
-import time
 import numpy as np
 import pandas as pd
 
@@ -27,14 +26,12 @@ PMT_weights = pd.read_csv("Input/PMT_weights.csv", index_col=0)
 
 # -- MODEL PARAMETERS -- #
 STEPS = 400
-N_RUNS = 1
+N_RUNS = 5
 RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
 
 
 for n, seed in enumerate(RANDOM_SEEDS):
 	print("RUN NR.", n+1)
-
-	tic = time.time()
 
 	# -- INITIALIZE MODEL -- #
 	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights,
@@ -43,9 +40,6 @@ for n, seed in enumerate(RANDOM_SEEDS):
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
 		model.step()
-
-	toc = time.time()
-	print("TIME TO RUN MODEL: ", toc-tic)
 
 	# -- COLLECT OUTPUT -- #
 	if not os.path.isdir("results"):
