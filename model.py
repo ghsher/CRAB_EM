@@ -31,78 +31,66 @@ from datacollection import model_vars, agent_vars
 N_REGIONS = 1                                      # Number of regions
 REGIONS = range(N_REGIONS)
 N_HOUSEHOLDS = {REGIONS[0]: 10000}                 # Number of households per region
-N_FIRMS = {REGIONS[0]: {C26: 30,          # Number of firms per type per region
-                        C27: 30,
-                        C28: 30,
-                        C29: 30,
-                        C30: 30,
+N_FIRMS = {REGIONS[0]: {C26: 150,
+                        Agriculture: 100,        # Number of firms per type per region
                         Industry: 300,
                         Construction: 200,
                         Transport: 150,
-                        Information: 100,
-                        Finance: 100,
-                        Business_services: 100,
+                        Utilities: 100,
+                        Private_services: 100,
+                        Public_services: 100,
+                        Wholesale_Retail: 100,
                         }}
 
 # -- FIRM INITIALIZATION ATTRIBUTES -- #
 INIT_NET_WORTH = {C26: 100,
-                C27: 100,
-                C28: 100,
-                C29: 100,
-                C30: 100,
+                Agriculture: 50,
                 Industry: 50,
                 Construction: 30,
                 Transport: 25,
-                Information: 20,
-                Finance: 20,
-                Business_services: 20}
+                Utilities: 20,
+                Private_services: 20,
+                Public_services: 20,
+                Wholesale_Retail: 20}
 
 INIT_CAP_AMOUNT = {C26: 4,
-                    C27: 4,
-                    C28: 4,
-                    C29: 4,
-                    C30: 4,
+                    Agriculture: 2,
                     Industry: 2,
                     Construction: 2,
                     Transport: 2,
-                    Information: 2,
-                    Finance: 2,
-                    Business_services: 2}
+                    Utilities: 2,
+                    Private_services: 2,
+                    Public_services: 2,
+                    Wholesale_Retail: 2}
 
-INIT_N_MACHINES = { C26: 20,         # Initial number of machines
-                    C27: 20,
-                    C28: 20,
-                    C29: 20,
-                    C30: 20,
+INIT_N_MACHINES = { C26: 20,  
+                    Agriculture: 10,       # Initial number of machines
                     Industry: 15,
                     Construction: 10,
                     Transport: 10,
-                    Information: 10,
-                    Finance: 10,
-                    Business_services: 10}
+                    Utilities: 10,
+                    Private_services: 10,
+                    Public_services: 10,
+                    Wholesale_Retail: 10}
 
-INIT_KL_RATIO = {   C26: 2,             # Initial capital-labor ratio
-                    C27: 2,
-                    C28: 2,
-                    C29: 2,
-                    C30: 2,
+INIT_KL_RATIO = {   C26: 2,  
+                    Agriculture: 1.4,           # Initial capital-labor ratio
                     Industry: 1.5,
                     Construction: 1.1,
                     Transport: 1.4,
-                    Information: 1.2,
-                    Finance: 0.9,
-                    Business_services: 1.2}
-INIT_MK  = {        C26: 0.25,                 # Initial markup
-                    C27: 0.25,
-                    C28: 0.25,
-                    C29: 0.25,
-                    C30: 0.25,
+                    Utilities: 1.5,
+                    Private_services: 1.2,
+                    Public_services: 1,
+                    Wholesale_Retail: 1}
+INIT_MK  = {        C26: 0.25,  
+                    Agriculture : 0.25,               # Initial markup
                     Industry: 0.25,
                     Construction: 0.25,
                     Transport: 0.25,
-                    Information: 0.25,
-                    Finance: 0.25,
-                    Business_services: 0.25}
+                    Utilities: 0.25,
+                    Private_services: 0.25,
+                    Public_services: 0.25,
+                    Wholesale_Retail: 0.25}
 
 
 # -- FLOOD ATTRIBUTES -- #
@@ -205,7 +193,7 @@ class CRAB_Model(Model):
             cap_firms = self.get_cap_firms(region)
             for firm in cap_firms:
                 # Get supplier
-                suppliers = self.get_firms_by_supplier(type(firm), region)
+                suppliers = self.get_firms_by_type(C26, region)
                 firm.supplier = self.RNGs[type(firm)].choice(suppliers)
                 # Append brochure to offers
                 firm.offers = {firm.supplier: firm.supplier.brochure}
@@ -261,7 +249,7 @@ class CRAB_Model(Model):
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
         markup = INIT_MK[type(firm)]
         # Initialize new supplier randomly
-        suppliers = self.get_firms_by_supplier(type(firm), firm.region)
+        suppliers = self.get_firms_by_type(C26, firm.region)
         supplier = self.RNGs[type(firm)].choice(suppliers)
         
         if isinstance(firm, CapitalFirm):
@@ -333,10 +321,10 @@ class CRAB_Model(Model):
         Returns:
             firms           : List of selected firms
         """
-        firms = self.firms[region][Business_services] + self.firms[region][Industry] + \
+        firms = self.firms[region][Agriculture] + self.firms[region][Industry] + \
                 self.firms[region][Construction] + self.firms[region][Transport] + \
-                self.firms[region][Information] + self.firms[region][Finance]  #+  \
-                #self.firms[region][Recreation]
+                self.firms[region][Private_services] + self.firms[region][Public_services]  +  \
+                self.firms[region][Utilities] + self.firms[region][Wholesale_Retail]
         return firms
     
     def get_cap_firms(self, region: int):
@@ -347,9 +335,7 @@ class CRAB_Model(Model):
         Returns:
             firms           : List of selected firms
         """
-        firms = self.firms[region][C26] + self.firms[region][C27] + \
-                self.firms[region][C28] + self.firms[region][C29] + \
-                self.firms[region][C30]
+        firms = self.firms[region][C26]
         return firms
 
     def get_firms_by_type(self, firm_type: type, region: int):
@@ -363,6 +349,7 @@ class CRAB_Model(Model):
         """
         return self.firms[region][firm_type]
     
+    '''
     def get_firms_by_buyer(self, firm_type: type, region: int):
         """Return all firms of specified type and region.
 
@@ -374,11 +361,11 @@ class CRAB_Model(Model):
 
         """
         if firm_type == C26:
-            buyers = [Business_services, Finance]
+            buyers = self.get_cons_firms(region)
         elif firm_type == C27:
-            buyers = [Industry, Information]
+            buyers = [Industry]
         elif firm_type == C28:
-            buyers = [Industry, Business_services, Construction]
+            buyers = [Industry, Construction]
         elif firm_type == C29:
             buyers = [Construction, Transport]
         elif firm_type == C30:
@@ -419,6 +406,7 @@ class CRAB_Model(Model):
             firms += self.firms[region][supplier]
         
         return firms
+    '''
     
     def get_households(self, region: int):
         """Return list of all households in this region.
@@ -432,6 +420,29 @@ class CRAB_Model(Model):
 
     def step(self) -> None:
         """Defines a single model step in the CRAB model. """
+
+
+        # -- Get data to upddate form CGE model -- #
+        '''
+        if self.schedule.time % 4 == 0:
+            KL_RATIO  =  pd.read_csv("KL_ratio.csv")
+            KL_RATIO.set_index("Industry", inplace=True)
+            KL_RATIO = KL_RATIO.to_dict()["KL_ratio"]
+            # we need to convert the keys to the class type 
+            for class_name, new_value in KL_RATIO.items():
+                class_obj = globals()[class_name]
+                INIT_KL_RATIO[class_obj] = new_value
+            
+            # -- Update firms' capital-labor ratio -- #
+            for region in REGIONS:
+                for firm_type in N_FIRMS[region].keys():
+                    for firm in self.firms[region][firm_type]:
+                        firm.cap_out_ratio = INIT_KL_RATIO[firm_type]
+        '''
+
+        
+
+    
 
         # -- FLOOD SHOCK -- #
         if self.schedule.time in FLOOD_WHEN.keys():

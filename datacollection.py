@@ -23,26 +23,23 @@ model_vars = {# -- FLOOD -- #
 			  		lambda m: len(m.get_households(REGION)),
 			  "n_c26_firms": 
 		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
-              "n_c27_firms":
-					lambda m: len(m.get_firms_by_type(C27, REGION)),
-              "n_c28_firms":
-					lambda m: len(m.get_firms_by_type(C28, REGION)),
-              "n_c29_firms":
-					lambda m: len(m.get_firms_by_type(C29, REGION)),
-              "n_c30_firms":
-					lambda m: len(m.get_firms_by_type(C30, REGION)),
 			  "n_ind_firms": 
 			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
               "n_cons_firms": 
 		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
 			  "n_trans_firms": 
 			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
-			  "n_inf_firms": 
-			  		lambda m: len(m.get_firms_by_type(Information, REGION)),
-			  "n_fin_firms": 
-			  		lambda m: len(m.get_firms_by_type(Finance, REGION)),
-			  "n_rec_firms": 
-			  		lambda m: len(m.get_firms_by_type(Business_services, REGION)),
+			  "n_agr_firms": 
+			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
+			  "n_priv_serv_firms": 
+			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
+			  "n_pub_serv_firms": 
+			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
+               "n_pub_utilities_firms": 
+			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
+                "n_retail_firms": 
+			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
+            
                 
 			  "HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
@@ -108,6 +105,8 @@ agent_vars = {
 			  		lambda a: getattr(a, "supplier", None),
 			  "Labor demand":
 			  		lambda a: getattr(a, "desired_employees", None),
+              "KL ratio":
+			  		lambda a: getattr(a, "cap_out_ratio", None),
 			  "Capital amount":
 			  		lambda a: sum(vin.amount
 			  					  for vin in getattr(a, "capital_vintage", None))

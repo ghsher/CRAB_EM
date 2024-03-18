@@ -12,6 +12,7 @@ and micro (agent level) outputs.
 import os
 import time
 import numpy as np
+import pandas as pd
 
 from tqdm.auto import tqdm
 
@@ -22,13 +23,20 @@ STEPS = 200
 N_RUNS = 5
 RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
 
+
+# -- READ FILES -- #
+HH_attributes = pd.read_csv("Input/HH_attributes.csv", index_col=0)
+firm_flood_depths = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
+PMT_weights = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+
 def run_model(seed):
 	print("RUN NR.", seed+1)
 
 	tic = time.time()
 
 	# -- INITIALIZE MODEL -- #
-	model = CRAB_Model(seed)
+	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights,
+					   CCA=True, social_net=True)
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
 		model.step()

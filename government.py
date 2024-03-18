@@ -27,29 +27,35 @@ from CRAB_agents import *
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # NOTE: TESTING, export turned off
-FRAC_CONS_IND= 0.2
-FRAC_CONS_TRANS = 0.2
-FRAC_CONS_CONS = 0.15
-FRAC_CONS_INFO = 0.1
-FRAC_CONS_FIN = 0.1
-FRAC_CONS_SERV = 0.25
+
+
+FRAC_CONS =  { Industry: 0.15,
+                Construction: 0.15,
+                    Transport: 0.1,
+                    Agriculture: 0.1,
+                    Utilities: 0.1,
+                    Private_services: 0.25,
+                    Public_services: 0.05,
+                    Wholesale_Retail: 0.1}
 
 
 FRAC_EXP = 0                # Multiplication factor for export each timestep
 FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
 
-FIRMS = [Firm, C26, C27, C28, C29, C30,
+FIRMS = [Firm, C26,
         Industry, Construction, Transport,
-        Information, Finance, Business_services]
+        Agriculture, Private_services, Public_services,
+        Wholesale_Retail, Utilities]
 
-FIRM_TYPES = [C26, C27, C28, C29, C30,
+FIRM_TYPES = [C26, Agriculture, Utilities, Wholesale_Retail,
             Industry, Construction, Transport,
-            Information, Finance, Business_services]
+            Public_services, Private_services]
 
-CAP_FIRM_TYPES = [C26, C27, C28, C29, C30]
+CAP_FIRM_TYPES = [C26]
 
 CONS_FIRM_TYPES = [Industry, Construction, Transport,
-              Information, Finance, Business_services]
+                    Agriculture, Utilities, Private_services,
+                    Public_services, Wholesale_Retail]
 
 # -- HELPER FUNCTIONS -- #
 def normalize(firms: list, attribute: str, convert_to_pos=False) -> dict:
@@ -167,7 +173,7 @@ class Government(Agent):
         """Get CapitalFirm with best productivity/price ratio. """
 
         # Get prod/price ratio for subsample of all CapitalFirms in this region
-        cap_firms = self.model.get_firms_by_supplier(firm_type, self.region)
+        cap_firms = self.model.get_firms_by_type(C26, self.region)
         cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
         # Collect capital firm productivities (of last timestep)
         firm_prod_dict = {firm: firm.old_prod / firm.price
@@ -291,35 +297,17 @@ class Government(Agent):
 
         # Save regional and export demands per consumption sector
         # TODO: We should add this in a loop  dict
-        ind_consumption = FRAC_CONS_IND * total_consumption
-        cons_consumption = FRAC_CONS_CONS * total_consumption
-        trans_consumption = FRAC_CONS_TRANS * total_consumption
-        info_consumption = FRAC_CONS_INFO * total_consumption
-        fin_consumption = FRAC_CONS_FIN * total_consumption
-        buss_serv_consumption = FRAC_CONS_SERV * total_consumption
+        for k, v in FRAC_CONS.items():
+            self.regional_demands[k] = round(v * total_consumption, 3)
+            self.export_demands[k] = round(v * self.demand_RoW, 3)
+
         # Add flood damage repair expenses to construction sector
-        cons_consumption += self.total_repair_expenses
+        self.regional_demands[Construction] += self.total_repair_expenses
+        self.total_repair_expenses = 0
 
         # service_consumption = total_consumption - goods_consumption
-        export_demand_buss_serv = self.demand_RoW * FRAC_CONS_SERV
-        export_demand_ind = self.demand_RoW * FRAC_CONS_IND
-        export_demand_cons = self.demand_RoW * FRAC_CONS_CONS
-        export_demand_trans = self.demand_RoW * FRAC_CONS_TRANS
-        export_demand_info = self.demand_RoW * FRAC_CONS_INFO
-        export_demand_fin = self.demand_RoW * FRAC_CONS_FIN
-    
-        self.regional_demands[Business_services] = round(buss_serv_consumption, 3)
-        self.export_demands[Business_services] = round(export_demand_buss_serv, 3)
-        self.regional_demands[Industry] = round(ind_consumption, 3)
-        self.export_demands[Industry] = round(export_demand_ind, 3)
-        self.regional_demands[Construction] = round(cons_consumption, 3)
-        self.export_demands[Construction] = round(export_demand_cons, 3)
-        self.regional_demands[Transport] = round(trans_consumption, 3)
-        self.export_demands[Transport] = round(export_demand_trans, 3)
-        self.regional_demands[Information] = round(info_consumption, 3)
-        self.export_demands[Information] = round(export_demand_info, 3)
-        self.regional_demands[Finance] = round(fin_consumption, 3)
-        self.export_demands[Finance] = round(export_demand_fin, 3)
+
+
 
     def stage6(self) -> None:
         """Sixth stage of Government step function. """

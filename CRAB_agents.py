@@ -604,7 +604,7 @@ class Firm(CRAB_Agent):
             new_prod, new_price = self.offers[best_supplier].values()
         else:
             # If there are no offers: pick random capital firm as supplier
-            cap_firms = self.model.get_firms_by_supplier(type(self), self.region)
+            cap_firms = self.model.get_firms_by_type(C26, self.region)
             supplier = self.model.RNGs[type(self)].choice(cap_firms)
             supplier.clients.append(self)
             if supplier.region == self.region:
@@ -644,7 +644,7 @@ class Firm(CRAB_Agent):
 
         else:
             # No offers? Pick random capital good firm as supplier
-            cap_firms = self.model.get_firms_by_supplier(type(self), self.region)
+            cap_firms = self.model.get_firms_by_type(C26, self.region)
             self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
 
             # Add this firm to supplier client list (if it is not already)
@@ -900,7 +900,7 @@ class CapitalFirm(Firm):
             N = 10
         new_clients = self.model.RNGs[type(self)].choice(firms, N, replace=False)
         # Add potential clients to own clients, avoid duplicates
-        clients = list(set(self.clients + list(new_clients)))
+        self.clients = list(set(self.clients + list(new_clients)))
 
         # Send brochure to chosen firms
         for client in self.clients:
@@ -1141,7 +1141,7 @@ class ConsumptionFirm(Firm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         # Randomly pick an initial supplier from all CapitalFirms
-        cap_firms = self.model.get_firms_by_supplier(type(self), self.region)
+        cap_firms = self.model.get_firms_by_type(C26, self.region)
         self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
         self.offers = {self.supplier: self.supplier.brochure}
         self.supplier.clients.append(self)
@@ -1378,7 +1378,7 @@ class Transport(ConsumptionFirm):
         super().__init__(**kwargs)
 
 
-class Information(ConsumptionFirm):
+class Public_services(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1387,27 +1387,27 @@ class Information(ConsumptionFirm):
         super().__init__(**kwargs)
 
 
-class Finance(ConsumptionFirm):
-    """Class representing a Consumption Services firm in the CRAB model. """
-
-    def __init__(self, **kwargs) -> None:
-        """Initialize Service firm agent. """
-
-        super().__init__(**kwargs)
-
-
-class Business_services(ConsumptionFirm):
-    """Class representing a Consumption Services firm in the CRAB model. """
-
-    def __init__(self, **kwargs) -> None:
-        """Initialize Service firm agent. """
-
-        super().__init__(**kwargs)
-
-
-'''
 class Agriculture(ConsumptionFirm):
-    """Class representing a Consumption Goods firm in the CRAB model. """
+    """Class representing a Consumption Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+
+class Private_services(ConsumptionFirm):
+    """Class representing a Consumption Private Services firm in the CRAB model. """
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize Service firm agent. """
+
+        super().__init__(**kwargs)
+
+
+
+class Utilities(ConsumptionFirm):
+    """Class representing a Utilities Goods firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
         """Initialize consumption goods firm agent. """
@@ -1418,8 +1418,8 @@ class Agriculture(ConsumptionFirm):
         #self.cap_out_ratio = 1.5  # Capital output ratio
 
 
-class Recreation(ConsumptionFirm):
-    """Class representing a Consumption Services firm in the CRAB model. """
+class Wholesale_Retail(ConsumptionFirm):
+    """Class representing a Consumption Wholesales and retail firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
         """Initialize Service firm agent. """
@@ -1428,6 +1428,6 @@ class Recreation(ConsumptionFirm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         #self.cap_out_ratio = 2  # Capital output ratio
-'''
+
 
 # ------------------------------ #
