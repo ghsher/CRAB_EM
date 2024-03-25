@@ -7,43 +7,44 @@
 
 This file stores the model and agent variables for the datacollection
 of the CRAB model.
-
 """
+
+
 
 from CRAB_agents import *
 
 REGION = 0
 
 model_vars = {# -- FLOOD -- #
-			  "Flood": "flood_now",
+			"Flood": "flood_now",
 			  # -- AGENT COUNTS -- #
-			  "n_agents": 
+			"n_agents": 
 			  		lambda m: m.schedule.get_agent_count(),
-			  "n_households": 
+			"n_households": 
 			  		lambda m: len(m.get_households(REGION)),
-			  "n_c26_firms": 
+			"n_c26_firms": 
 		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
-			  "n_ind_firms": 
+			"n_ind_firms": 
 			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
-              "n_cons_firms": 
+            "n_cons_firms": 
 		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
-			  "n_trans_firms": 
+			"n_trans_firms": 
 			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
-			  "n_agr_firms": 
+			"n_agr_firms": 
 			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
-			  "n_priv_serv_firms": 
+			"n_priv_serv_firms": 
 			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
-			  "n_pub_serv_firms": 
+			"n_pub_serv_firms": 
 			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
-               "n_pub_utilities_firms": 
+            "n_pub_utilities_firms": 
 			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
-                "n_retail_firms": 
+            "n_retail_firms": 
 			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
             
                 
-			  "HH consumption": 
+			"HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			  "Regional demand":
+			"Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
 			"Export demand": 
 			  		lambda m: sum(m.governments[REGION].export_demands.values()),
