@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Type
 if TYPE_CHECKING:
     from model import CRAB_Model
 
+
+
 from mesa import Agent
 
 from CRAB_agents import *
@@ -29,33 +31,26 @@ TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # NOTE: TESTING, export turned off
 
 
-FRAC_CONS =  { Industry: 0.15,
-                Construction: 0.15,
-                    Transport: 0.1,
-                    Agriculture: 0.1,
-                    Utilities: 0.1,
-                    Private_services: 0.25,
-                    Public_services: 0.05,
-                    Wholesale_Retail: 0.1}
+
 
 
 FRAC_EXP = 0                # Multiplication factor for export each timestep
 FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
 
-FIRMS = [Firm, C26,
-        Industry, Construction, Transport,
-        Agriculture, Private_services, Public_services,
-        Wholesale_Retail, Utilities]
+FIRMS = [Firm, Industry_capital,
+        Industry_rest, Construction, Transport,
+        Agriculture, Private_Services, Public_Services,
+        Logistics, Utilities]
 
-FIRM_TYPES = [C26, Agriculture, Utilities, Wholesale_Retail,
-            Industry, Construction, Transport,
-            Public_services, Private_services]
+FIRM_TYPES = [Industry_capital, Agriculture, Utilities, Logistics,
+            Industry_rest, Construction, Transport,
+            Public_Services, Private_Services]
 
-CAP_FIRM_TYPES = [C26]
+CAP_FIRM_TYPES = [Industry_capital]
 
-CONS_FIRM_TYPES = [Industry, Construction, Transport,
-                    Agriculture, Utilities, Private_services,
-                    Public_services, Wholesale_Retail]
+CONS_FIRM_TYPES = [Industry_rest, Construction, Transport,
+                    Agriculture, Utilities, Private_Services,
+                    Public_Services, Logistics]
 
 # -- HELPER FUNCTIONS -- #
 def normalize(firms: list, attribute: str, convert_to_pos=False) -> dict:
@@ -155,6 +150,9 @@ class Government(Agent):
         self.CCA_subsidy = CCA_subsidy
         self.total_repair_expenses = 0
 
+        self.FRAC_CONS = self.model.FRAC_CONS
+
+
     def set_min_wage(self, min_wage_frac: float=0.6,
                      unempl_subsidy_frac: float=1) -> None:
         """Sets minimum wages and unemployment subsidy. """
@@ -173,7 +171,7 @@ class Government(Agent):
         """Get CapitalFirm with best productivity/price ratio. """
 
         # Get prod/price ratio for subsample of all CapitalFirms in this region
-        cap_firms = self.model.get_firms_by_type(C26, self.region)
+        cap_firms = self.model.get_firms_by_type(Industry_capital, self.region)
         cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
         # Collect capital firm productivities (of last timestep)
         firm_prod_dict = {firm: firm.old_prod / firm.price
@@ -297,7 +295,9 @@ class Government(Agent):
 
         # Save regional and export demands per consumption sector
         # TODO: We should add this in a loop  dict
-        for k, v in FRAC_CONS.items():
+        self.FRAC_CONS = self.model.FRAC_CONS
+        
+        for k, v in self.FRAC_CONS.items():
             self.regional_demands[k] = round(v * total_consumption, 3)
             self.export_demands[k] = round(v * self.demand_RoW, 3)
 

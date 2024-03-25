@@ -604,7 +604,7 @@ class Firm(CRAB_Agent):
             new_prod, new_price = self.offers[best_supplier].values()
         else:
             # If there are no offers: pick random capital firm as supplier
-            cap_firms = self.model.get_firms_by_type(C26, self.region)
+            cap_firms = self.model.get_firms_by_type(Industry_capital, self.region)
             supplier = self.model.RNGs[type(self)].choice(cap_firms)
             supplier.clients.append(self)
             if supplier.region == self.region:
@@ -644,7 +644,7 @@ class Firm(CRAB_Agent):
 
         else:
             # No offers? Pick random capital good firm as supplier
-            cap_firms = self.model.get_firms_by_type(C26, self.region)
+            cap_firms = self.model.get_firms_by_type(Industry_capital, self.region)
             self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
 
             # Add this firm to supplier client list (if it is not already)
@@ -1064,9 +1064,9 @@ class CapitalFirm(Firm):
 
 
 # -- CAPITAL FIRM SECTORS -- #
-class C26(CapitalFirm):
+class Industry_capital(CapitalFirm):
     """Class representing a Manufacture of computer, electronic and 
-        optical product (NACE C26) in the CRAB model. """
+        optical product (NACE Industry_capital) in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
         """Initialize Service firm agent. """
@@ -1141,7 +1141,7 @@ class ConsumptionFirm(Firm):
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         # Randomly pick an initial supplier from all CapitalFirms
-        cap_firms = self.model.get_firms_by_type(C26, self.region)
+        cap_firms = self.model.get_firms_by_type(Industry_capital, self.region)
         self.supplier = self.model.RNGs[type(self)].choice(cap_firms)
         self.offers = {self.supplier: self.supplier.brochure}
         self.supplier.clients.append(self)
@@ -1351,7 +1351,7 @@ class ConsumptionFirm(Firm):
 
 
 # -- CONSUMPTION FIRM SECTORS -- #
-class Industry(ConsumptionFirm):
+class Industry_rest(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1378,7 +1378,7 @@ class Transport(ConsumptionFirm):
         super().__init__(**kwargs)
 
 
-class Public_services(ConsumptionFirm):
+class Public_Services(ConsumptionFirm):
     """Class representing a Consumption Services firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1396,7 +1396,7 @@ class Agriculture(ConsumptionFirm):
         super().__init__(**kwargs)
 
 
-class Private_services(ConsumptionFirm):
+class Private_Services(ConsumptionFirm):
     """Class representing a Consumption Private Services firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
@@ -1418,7 +1418,7 @@ class Utilities(ConsumptionFirm):
         #self.cap_out_ratio = 1.5  # Capital output ratio
 
 
-class Wholesale_Retail(ConsumptionFirm):
+class Logistics(ConsumptionFirm):
     """Class representing a Consumption Wholesales and retail firm in the CRAB model. """
 
     def __init__(self, **kwargs) -> None:
