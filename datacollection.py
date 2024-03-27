@@ -16,6 +16,8 @@ REGION = 0
 
 model_vars = {# -- FLOOD -- #
 			  "Flood": "flood_now",
+              "Flood intensity": "flood_return",
+
 			  # -- AGENT COUNTS -- #
 			  "n_agents": 
 			  		lambda m: m.schedule.get_agent_count(),
@@ -35,25 +37,28 @@ model_vars = {# -- FLOOD -- #
 			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
 			  "n_pub_serv_firms": 
 			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
-               "n_pub_utilities_firms": 
+              "n_pub_utilities_firms": 
 			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
-                "n_retail_firms": 
+              "n_retail_firms": 
 			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
-            
-                
+
+			  # -- CONSUMPTION/DEMAND VARIABLES -- #
 			  "HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
 			  "Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
-			"Export demand": 
-			  		lambda m: sum(m.governments[REGION].export_demands.values()),
+			  "Export demand": 
+					lambda m: sum(m.governments[REGION].export_demands.values()),
+				# TODO: Equity considerations (need to classify/group households in model):
+				#        - Disaggregated consumption
 
-			"Unemployment rate":
-			  		lambda m: m.governments[REGION].unemployment_rate,
-			"Min wage":
-			  		lambda m: m.governments[REGION].min_wage,
-			"Avg wage":
-			  		lambda m: m.governments[REGION].avg_wage,
+			  # -- LABOUR VARIABLES -- #
+			  "Unemployment rate":
+					lambda m: m.governments[REGION].unemployment_rate,
+			  "Min wage":
+					lambda m: m.governments[REGION].min_wage,
+			  "Avg wage":
+					lambda m: m.governments[REGION].avg_wage,
 			}
 
 agent_vars = {
@@ -62,7 +67,7 @@ agent_vars = {
 			  "Net worth":
 			  		lambda a: getattr(a, "net_worth", None),
 
-			  # # -- FIRM ATTRIBUTES -- #
+			  # -- FIRM ATTRIBUTES -- #
 			  "Price":
 			  	  	lambda a: getattr(a, "price", None),
 			  "Market share":
