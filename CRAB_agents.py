@@ -528,14 +528,16 @@ class Firm(CRAB_Agent):
                 else:
                     self.machines_to_replace -= vintage.amount
                     self.capital_vintage.remove(vintage)
-                    del vintage
 
         # Remove machines that are too old
+        vin_to_remove = []
         for vintage in self.capital_vintage:
             vintage.age += 1
             if vintage.age > vintage.lifetime:
-                self.capital_vintage.remove(vintage)
-                del vintage
+                vin_to_remove.append(vintage)
+        for vintage in vin_to_remove:
+            self.capital_vintage.remove(vintage)
+
         # Reset investment cost
         self.investment_cost = 0
 
@@ -822,11 +824,13 @@ class Firm(CRAB_Agent):
 
         # In case of flood damage: destroy (part of) capital
         if self.damage_coef > 0:
+            vin_to_remove = []
             for vintage in self.capital_vintage:
                 # If Bernoulli is successful: vintage is destroyed
                 if self.model.RNGs[(type(self))].binomial(1, self.damage_coef):
-                    self.capital_vintage.remove(vintage)
-                    del vintage
+                    vin_to_remove.append(vintage)
+            for vintage in vin_to_remove:
+                self.capital_vintage.remove(vintage)
 
         self.update_capital()
         self.debt = 0
