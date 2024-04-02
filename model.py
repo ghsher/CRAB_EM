@@ -93,8 +93,6 @@ INIT_MK  = {        C26: 0.25,
                     Wholesale_Retail: 0.25}
 
 
-# -- FLOOD ATTRIBUTES -- #
-FLOOD_WHEN = {40: 1000, 80: 100}  # Flood occurrence (timestep: return period)
 # -- ADAPTATION ATTRIBUTES -- #
 AVG_HH_CONNECTIONS = 7
 
@@ -103,7 +101,10 @@ class CRAB_Model(Model):
 
     def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
-                 CCA: bool=True, social_net: bool=True) -> None:
+                 CCA: bool=True, social_net: bool=True,
+                 debt_sales_ratio: float=2.0,
+                 wage_sensitivity_prod: float=0.2,
+                 flood_times: dict={}) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -136,11 +137,19 @@ class CRAB_Model(Model):
         self.RNGs["Adaptation"] = np.random.default_rng(random_seed + i + 1)
         # ------------------------------
 
-        # -- FLOOD and ADAPTATION ATTRIBUTES -- #
+        # -- ADAPTATION ATTRIBUTES -- #
         self.CCA = CCA  # True/False (adaptation on/off)
         if self.CCA:
             self.social_net = social_net
             self.PMT_weights = PMT_weights
+
+        # -- FLOOD ATTRIBUTES -- #
+        self.FLOOD_WHEN = flood_times
+        
+        # -- SAVE INPUT FACTORS AS CONSTANTS -- #
+        self.DEBT_SALES_RATIO = debt_sales_ratio
+        self.WAGE_SENSITIVITY_PROD = wage_sensitivity_prod
+
 
         # -- INITIALIZE AGENTS -- #
         self.governments = defaultdict(list)
@@ -445,9 +454,9 @@ class CRAB_Model(Model):
     
 
         # -- FLOOD SHOCK -- #
-        if self.schedule.time in FLOOD_WHEN.keys():
+        if self.schedule.time in self.FLOOD_WHEN.keys():
             self.flood_now = True
-            self.flood_return = FLOOD_WHEN[self.schedule.time]
+            self.flood_return = self.FLOOD_WHEN[self.schedule.time]
         else:
             self.flood_now = False
             self.flood_return = 0

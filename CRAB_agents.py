@@ -38,7 +38,6 @@ WAGE_DIST = (1, 0.02)     # Normal distribution (mean, std) of initial wages
 
 # -- FIRM CONSTANTS -- #
 INTEREST_RATE = 0.01
-DEBT_SALES_RATIO = 2   # Ratio affordable debt : sales
 
 # -- FLOOD CONSTANTS -- #
 DAMAGE_CURVES = {"Residential":
@@ -662,7 +661,7 @@ class Firm(CRAB_Agent):
         # If more machines desired than can be bought, make debt to invest
         if n_affordable < n_desired and self.net_worth > 0:
             # Compute affordable debt and adjust number of machines bought
-            debt_affordable = self.sales * DEBT_SALES_RATIO
+            debt_affordable = self.sales * self.model.DEBT_SALES_RATIO
             n_from_debt = debt_affordable // self.supplier.price
             n_to_buy = min(n_desired, n_affordable + n_from_debt)
 
@@ -1154,22 +1153,25 @@ class ConsumptionFirm(Firm):
         self.competitiveness = np.repeat(competitiveness, self.model.n_regions+1)
         self.production_made = 1
 
-    def set_wage(self, b: float=0.2) -> None:
+    def set_wage(self) -> None:
         """Set firm wage, based on average regional productivity
            and regional minimum wage.
-
-        Args:
-            b       : Productivity scaling factor
         """
 
+        # Read wage sensititivities from model
+        sensitivity_prod = self.model.WAGE_SENSITIVITY_PROD
+        sensitivity_avg_prod = 1-sensitivity_prod
         # Bound wage by minimum wage (determined by government)
         prod_diff = max(-0.25, min(0.25, (self.prod - self.old_prod)/self.old_prod))
         # Regional productivity change, calculated by government
         gov = self.model.governments[self.region]
         avg_prod_diff = gov.prod_increase[type(self)]
+        # Recalculate wage level
         self.wage = max(gov.min_wage,
                         round(self.wage *
-                              (1 + b * prod_diff + (1 - b) * avg_prod_diff),
+                              (1 + 
+                               sensitivity_prod * prod_diff +
+                               (1 - sensitivity_avg_prod) * avg_prod_diff),
                               3))
 
     def compete_and_sell(self, v: float=0.05):
