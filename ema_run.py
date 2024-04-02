@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 from ema_workbench import (
     ema_logging,
@@ -41,13 +42,13 @@ PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
 CCA_ENABLED = True
 SOCIAL_NET_ENABLED = True
 
-N_REPLICATIONS = 2
+N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 260 # 5 year burn-in + 60 years model time
+STEPS = 120 # 5 year burn-in + 25 years model time
 
 FLOOD_NARRATIVES = {
-        'A' : {40: 1000},
-        'B' : {20: 10, 40: 10, 60: 10, 80: 10},
+        'A' : {75: 1000},
+        'B' : {40: 100, 60: 100, 80: 100, 100: 100},
 }
 
 # Model KPIs are just CRAB_Model Datacollector column names
@@ -82,32 +83,35 @@ def CRAB_model_wrapper(
         wage_sensitivity_prod=wage_sensitivity_prod,
         flood_times=FLOOD_NARRATIVES[flood_narrative],
         random_seed=seed)
-    for _ in range(steps):
-        model.step()
     
+    # TODO: Consider adding a TQDM tracker here.
+    for _ in tqdm(range(STEPS), total=STEPS, leave=False,
+                  desc=f"MODEL RUN: DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, {flood_narrative}"):
+        model.step()
+
     # TODO: Replace all of the below when you've replaced the Model's DC
     #       (should probably be a priority right now)
     # TODO: Also, handle disagg.
     model_df = model.datacollector.get_model_vars_dataframe()
     agent_df = model.datacollector.get_agent_vars_dataframe()
-
     out = {}
     for KPI in MODEL_KPIs:
         out[KPI] = model_df[KPI].tolist()
     for KPI in AGENT_KPIs:
+        out_name = f"{KPI['agg'].capitalize()} {KPI['name']}"
         sub_df = None
         if KPI['type'] == 'Household':
-            sub_df = agent_df[agent_df['Type'] == "<class 'CRAB_agents.Household'>"]
+            sub_df = agent_df[agent_df['Type'] == "Household"]
         elif KPI['type'] == 'Firm':
-            sub_df = agent_df[(agent_df['Type'] != "<class 'CRAB_agents.Household'>") & 
-                              (agent_df['Type'] != "<class 'government.Government'>")]
-        out[KPI['name']] = sub_df.groupby('Step').agg({KPI['name']: KPI['agg']})
+            sub_df = agent_df[(agent_df['Type'] != "Household") & 
+                              (agent_df['Type'] != "Government")]
+        out[out_name] = sub_df.groupby('Step').agg({KPI['name']: KPI['agg']})[KPI['name']].tolist()
 
     return out
 
-
 # Runtime output settings
-ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
+# ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
+ema_logging.LOG_FORMAT = "[EMA] %(message)s"
 ema_logging.log_to_stderr(ema_logging.INFO) #, pass_root_logger_level=True) # Uncomment for MPI
 
 # Build up the EMA_workbench Model object
@@ -131,7 +135,7 @@ for KPI in MODEL_KPIs:
     outcomes.append(ArrayOutcome(KPI))
 for KPI in AGENT_KPIs:
     out_name = f"{KPI['agg'].capitalize()} {KPI['name']}"
-    outcomes.append(ArrayOutcome(out_name, KPI['name']))
+    outcomes.append(ArrayOutcome(out_name))
 model.outcomes = outcomes
 
 # Run experiments!!!
@@ -140,7 +144,7 @@ model.outcomes = outcomes
 #        until you fix the PFF problem
 with SequentialEvaluator(model) as evaluator:
     results = evaluator.perform_experiments(
-        scenarios=20,
+        scenarios=10,
         uncertainty_sampling=Samplers.LHS
     )
     

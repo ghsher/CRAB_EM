@@ -91,7 +91,7 @@ model_vars = {# -- FLOOD -- #
 
 agent_vars = {# -- ALL AGENTS ATTRIBUTES -- #
 			  "Type":
-			  		lambda a: type(a),
+			  		lambda a: a.__class__.__name__,
 
 			  # -- FIRM ATTRIBUTES -- #
 			#   "Price":
