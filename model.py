@@ -61,8 +61,10 @@ class CRAB_Model(Model):
 
     def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
-                 firms_RD: bool=True, flood_when: dict={},
-                 CCA: bool=True, social_net: bool=True) -> None:
+                 firms_RD: bool=True, CCA: bool=True, social_net: bool=True,
+                 flood_when: dict={},
+                 debt_sales_ratio: float=2.0,
+                 wage_sensitivity_prod: float=0.2) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -105,6 +107,11 @@ class CRAB_Model(Model):
         if self.CCA:
             self.social_net = social_net
             self.PMT_weights = PMT_weights
+
+        # -- SAVE INPUT FACTORS AS CONSTANTS -- #
+        self.DEBT_SALES_RATIO = debt_sales_ratio
+        self.WAGE_SENSITIVITY_PROD = wage_sensitivity_prod
+
 
         # -- INITIALIZE AGENTS -- #
         self.governments = defaultdict(list)
