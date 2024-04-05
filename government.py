@@ -272,6 +272,7 @@ class Government(Agent):
         service_consumption = total_consumption - goods_consumption
         # Add flood shock damage repairs to goods consumption
         goods_consumption += self.total_repair_expenses
+        self.total_repair_expenses = 0
 
         export_demand_cons = self.demand_RoW * FRAC_CONS_IN_GOODS
         export_demand_serv = self.demand_RoW - export_demand_cons
