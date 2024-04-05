@@ -148,7 +148,7 @@ class Government(Agent):
         cap_firms = self.model.get_firms_by_type(CapitalFirm, self.region)
         cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
         # Collect capital firm productivities (of last timestep)
-        firm_prod_dict = {firm: firm.old_prod / firm.price
+        firm_prod_dict = {firm: firm.machine_prod / firm.price
                           for firm in cap_firms if firm.region == self.region}
         # Return firm with best prod/price ratio
         return max(firm_prod_dict, key=firm_prod_dict.get, default=None)
@@ -269,9 +269,10 @@ class Government(Agent):
 
         # Save regional and export demands per consumption sector
         goods_consumption = FRAC_CONS_IN_GOODS * total_consumption
-        goods_consumption += self.total_repair_expenses
         service_consumption = total_consumption - goods_consumption
-        
+        # Add flood shock damage repairs to goods consumption
+        goods_consumption += self.total_repair_expenses
+
         export_demand_cons = self.demand_RoW * FRAC_CONS_IN_GOODS
         export_demand_serv = self.demand_RoW - export_demand_cons
         self.regional_demands[ConsumptionGoodFirm] = round(goods_consumption, 3)
@@ -308,7 +309,7 @@ class Government(Agent):
         self.top_wage = max(firm.wage for firm in
                             self.model.get_cons_firms(self.region))
         # Get top productivity (of CapitalGood firms in previous timestep)
-        self.top_prod = max(firm.old_prod for firm in
+        self.top_prod = max(firm.machine_prod for firm in
                             self.model.get_firms_by_type(CapitalFirm, self.region))
 
         # Get total capital and capital for firm subsidiaries per sector
