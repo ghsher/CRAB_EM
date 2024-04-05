@@ -17,9 +17,7 @@ REGION = 0
 model_vars = {# -- FLOOD -- #
 			  "Flood": "flood_now",
 			  # -- AGENT COUNTS -- #
-			  "n_agents": 
-			  		lambda m: m.schedule.get_agent_count(),
-			  "n_households": 
+			  "N households": 
 			  		lambda m: len(m.get_households(REGION)),
 			  "n_c26_firms": 
 		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
@@ -35,26 +33,24 @@ model_vars = {# -- FLOOD -- #
 			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
 			  "n_pub_serv_firms": 
 			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
-               "n_pub_utilities_firms": 
+              "n_pub_utilities_firms": 
 			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
-                "n_retail_firms": 
+              "n_retail_firms": 
 			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
             
-                
 			  "HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
 			  "Regional demand":
 			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
-			"Export demand": 
+			  "Export demand": 
 			  		lambda m: sum(m.governments[REGION].export_demands.values()),
-
-			"Unemployment rate":
+			  "Unemployment rate":
 			  		lambda m: m.governments[REGION].unemployment_rate,
-			"Min wage":
+			  "Min wage":
 			  		lambda m: m.governments[REGION].min_wage,
-			"Avg wage":
+			  "Avg wage":
 			  		lambda m: m.governments[REGION].avg_wage,
-			}
+			  }
 
 agent_vars = {
 			  "Type":
@@ -62,15 +58,19 @@ agent_vars = {
 			  "Net worth":
 			  		lambda a: getattr(a, "net_worth", None),
 
-			  # # -- FIRM ATTRIBUTES -- #
+			  # -- FIRM ATTRIBUTES -- #
+			  "Sales":
+			  		lambda a: getattr(a, "sales", None),
 			  "Price":
 			  	  	lambda a: getattr(a, "price", None),
-			  "Market share":
-			  		lambda a: getattr(a, "market_share", None)[0]
-			  				  if getattr(a, "market_share", None) is not None
-			  				  else None,
+			  # "Market share":
+			  # 		lambda a: getattr(a, "market_share", None)[0]
+			  # 				  if getattr(a, "market_share", None) is not None
+			  # 				  else None,
 			  "Prod":
 			  		lambda a: getattr(a, "prod", None),
+			  "Machine prod":
+			  		lambda a: getattr(a, "machine_prod", None),
 			  "Inventories":
 			  		lambda a: getattr(a, "inventories", None),
 			  "N ordered":

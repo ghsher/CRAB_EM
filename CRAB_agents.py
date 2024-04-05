@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 import numpy as np
 import math
 import bisect
-from scipy.stats import bernoulli
+from scipy.stats import bernoulli, beta
 from collections import deque
 from mesa import Agent
 
@@ -113,7 +113,6 @@ class CRAB_Agent(Agent):
 
         # -- FLOOD ATTRIBUTES -- #
         self.flood_depths = flood_depths
-        self.flood_depth_now = 0
         self.monetary_damage = 0
 
     def stage8(self):
@@ -211,13 +210,14 @@ class Household(CRAB_Agent):
         """Calculate total damage to property for this household. """
 
         # Adjust flood depth for elevation level
+        flood_depth = self.flood_depths[self.model.flood_return]
         if self.adaptation["Elevation"]:
-            self.flood_depth_now -= self.adaptation["Elevation"]
+            flood_depth -= self.adaptation["Elevation"]
         # Get damage coefficient from flood depth
-        self.damage_coef = depth_to_damage("Residential", self.flood_depth_now)
+        self.damage_coef = depth_to_damage("Residential", flood_depth)
 
         # Reduce damage when wet- or dry_proofed
-        if self.adaptation["Dry_proof"] == 1 and self.flood_depth_now < 1:
+        if self.adaptation["Dry_proof"] and flood_depth < 1:
             self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
         if self.adaptation["Wet_proof"]:
             self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Wet_proof"])
@@ -284,7 +284,7 @@ class Household(CRAB_Agent):
         # Take inverse logit function for adaptation (intention) probability
         y_hat = round(min(1, np.exp(y_hat)/(1 + np.exp(y_hat))), 2)
 
-        # Bernoulli draw for intention-action barrier
+        # Binomial draw represents intention-action barrier
         if y_hat > 0 and self.model.RNGs["Adaptation"].binomial(1, y_hat/4):
             self.measure_to_impl = measure
             self.adaptation_costs = CCA_COSTS[measure]
@@ -302,7 +302,8 @@ class Household(CRAB_Agent):
         """Implement specified adaptation measure.
 
         Args:
-            measure         : Adaptation measure ("Elevation", "Dry_proof")
+            measure         : Adaptation measure
+                              ("Elevation", "Dry_proof" or "Wet-proof")
         """
 
         # Spend costs and keep track of expenses by government
@@ -324,8 +325,6 @@ class Household(CRAB_Agent):
         
         # -- Flood shock -- #
         if self.model.flood_now:
-            # Get flood depth for this return period
-            self.flood_depth_now = self.flood_depths[self.model.flood_return]
             self.flood_damage()
 
     def stage2(self) -> None:
@@ -399,9 +398,11 @@ class Household(CRAB_Agent):
             if (self.lifetime % 4 == 0 and self.measure_to_impl is None
                     and not np.all(list(self.adaptation.values()))):
 
-                # Get all measure (in order of consideration)
+                # Get all measures (in order of consideration)
                 all_measures = ["Dry_proof", "Wet_proof", "Elevation"]
                 for measure in all_measures:
+
+                    # Consider measure if not taken yet
                     if not self.adaptation[measure]:
                         if self.model.social_net:
                             n_others_adapted = sum([bool(neighbor.adaptation[measure])
@@ -414,6 +415,7 @@ class Household(CRAB_Agent):
                                          self.adaptation[other_measures[0]],
                                          self.adaptation[other_measures[1]])
 
+                    # Else increase measure lifetime (for dry-proofing)
                     elif self.adaptation[measure]:
                         # If dry-proofing implemented: increase its age
                         self.adaptation["Dry_proof"] += 1
@@ -443,7 +445,7 @@ class Firm(CRAB_Agent):
                  init_n_machines: int, init_cap_amount: int,
                  cap_out_ratio: float, markup: float, sales: int=10,
                  wage: float=None, price: float=None, prod: float=None,
-                 old_prod: float=None, lifetime: int=1) -> None:
+                 lifetime: int=1) -> None:
         """Initialize firm agent.
 
         Args:
@@ -483,7 +485,6 @@ class Firm(CRAB_Agent):
                                                                     WAGE_DIST[1])
         self.prod = prod if prod else model.RNGs[type(self)].normal(PROD_DIST[0],
                                                                     PROD_DIST[1])
-        self.old_prod = old_prod if old_prod else self.prod
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
         self.price = price if price else self.wage/self.prod
@@ -516,6 +517,16 @@ class Firm(CRAB_Agent):
             self.amount = amount
             self.age = 0
             self.lifetime = firm.model.RNGs[type(firm)].normal(20, 10)
+
+    def damage_capital(self):
+        """Apply flood damage to capital. """
+        vin_to_remove = []
+        for vintage in self.capital_vintage:
+            # If draw from binomial is successful: vintage is destroyed
+            if self.model.RNGs[(type(self))].binomial(1, self.damage_coef):
+                vin_to_remove.append(vintage)
+        for vintage in vin_to_remove:
+            self.capital_vintage.remove(vintage)
 
     def update_capital(self) -> None:
         """Update capital:
@@ -641,7 +652,8 @@ class Firm(CRAB_Agent):
                       for brochure in self.offers.values()]
             # Get normalized cumulative sum of all offer ratios
             sup_prob = np.cumsum(ratios)/np.cumsum(ratios)[-1]
-            j = bisect.bisect_right(sup_prob, self.model.RNGs[type(self)].uniform(0, 1))
+            j = bisect.bisect_right(sup_prob,
+                                    self.model.RNGs[type(self)].uniform(0, 1))
             self.supplier = list(self.offers.keys())[j]
 
         else:
@@ -752,12 +764,17 @@ class Firm(CRAB_Agent):
 
         Returns:
             profits         : Firm profits (pre-tax)
+            RD              : Boolean, research and development (On/Off)
         """
 
-        sales = self.demand_filled * self.price
+        self.sales = self.demand_filled * self.price
         total_costs = self.cost * self.demand_filled
-        profits = round(sales - total_costs -
-                        self.debt * (1 + INTEREST_RATE), 3)
+        if RD:
+            profits = round(self.sales - total_costs - self.RD_budget -
+                            self.debt * (1 + INTEREST_RATE), 3)
+        else:
+            profits = round(self.sales - total_costs -
+                            self.debt * (1 + INTEREST_RATE), 3)
         self.pre_tax_profits = profits
         return profits
 
@@ -827,43 +844,20 @@ class Firm(CRAB_Agent):
         for supplier in self.offers.keys():
             supplier.clients.remove(self)
 
-    def stage1(self) -> None:
-        """First stage of firm step function:
-           flood damage, update capital and reset debt. """
-
-        # -- FLOOD SHOCK: compute damage coefficient -- #
-        if self.model.flood_now:
-            self.damage_coef = depth_to_damage("Industry", self.flood_depth_now)
-        else:
-            self.damage_coef = 0
-
-        # In case of flood damage: destroy (part of) capital
-        if self.damage_coef > 0:
-            vin_to_remove = []
-            for vintage in self.capital_vintage:
-                # If Bernoulli is successful: vintage is destroyed
-                if self.model.RNGs[(type(self))].binomial(1, self.damage_coef):
-                    vin_to_remove.append(vintage)
-            for vintage in vin_to_remove:
-                self.capital_vintage.remove(vintage)
-
-        self.update_capital()
-        self.debt = 0
-
     def stage3(self) -> None:
         """Third stage of firm step function: set wages. """
-        self.set_wage()
+        self.update_wage()
 
     def stage4(self) -> None:
         """Fourth stage of firm step function: destroy productivity (by flood). """
-        if self.damage_coef:
+        if self.damage_coef > 0:
             self.prod -= self.prod * self.damage_coef
 
 
 class CapitalFirm(Firm):
     """Class representing a capital firm in the CRAB model. """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, machine_prod: float=None, **kwargs) -> None:
         """Initialize capital firm agent. """
 
         super().__init__(**kwargs)
@@ -871,18 +865,95 @@ class CapitalFirm(Firm):
         # -- Initialize CapitalFirm-specific attributes -- #
         # -- CAPITAL GOODS MARKET: SUPPLY SIDE -- #
         self.clients = []
-
         self.regional_orders = {}
-        self.brochure = {"prod": self.prod, "price": self.price}
+        # Initialize productivity of sold machines
+        self.machine_prod = machine_prod if machine_prod else self.prod
+        self.brochure = {"prod": self.machine_prod, "price": self.price}
         self.cap_out_ratio = 1  # Capital output ratio
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         self.offers = {}
         self.production_made = 0
 
-    def update_prod_cost(self) -> None:
-      """Computes the unit cost of production for this firm. """
-      self.cost = self.wage / self.prod
+    def RD(self, RD_frac=0.04, IN_frac=0.5):
+        """Research and development: innovation and imitation.
+        
+        Args:
+            RD_frac         : Fraction of sales or net worth spent on R&D
+            IN_frac      : Fraction of R&D budget spent on innovation
+        """
+        
+        # Calculate total R&D budget
+        self.RD_budget = (RD_frac * self.sales if self.sales > 0 else
+                          (RD_frac * self.net_worth if self.net_worth >= 0 else 0))
+        # Innovation and imitation
+        IN_budget = IN_frac * self.RD_budget
+        IM_budget = self.RD_budget - IN_budget
+        # Adopt new technologies: update productivity by innovation or imitation
+        self.machine_prod = round(max(self.machine_prod,
+                                  self.innovate(IN_budget/self.wage),
+                                  self.imitate(IM_budget), 1), 3)
+
+    def innovate(self, IN_budget, Z=0.3, a=3, b=3, lower=-0.15, upper=0.15):
+        """ Innovation process perfomed by Firm agents.
+
+        Args:
+            IN_budget       : Innovation budget
+            Z               : Budget scaling factor for innovation succes
+            a               : Alpha parameter for Beta distribution
+            b               : Beta parameter for Beta distribution
+            lower           : Lower bound for productivity change
+            upper           : Upper bound for productivity change
+        """
+
+        # Binomial draw to determine success of innovation
+        p = 1 - math.exp(-Z * IN_budget)
+        if self.model.RNGs["Firms_RD"].binomial(1, p):
+            # Draw change in productivity from beta distribution
+            prod_change = 1 + lower + beta.rvs(a, b) * (upper - lower)
+            return prod_change * self.machine_prod
+        else:
+            return 0
+
+    def imitate(self, IM_budget, Z=0.3):
+        """Imitation process performed by capital firms.
+
+        Args:
+            IM_budget   : Imitation budget
+            Z           : Budget scaling factor for imitation success
+        """
+
+        # Binomial draw to determine success of imitation
+        p = 1 - math.exp(-Z * IM_budget)
+        if self.model.RNGs["Firms_RD"].binomial(1, p):
+            firms = self.model.get_firms_by_type(type(self), self.region)
+            with np.errstate(divide='ignore'):
+                # Compute technological distances for all other capital firms
+                other_prods = np.array([firm.machine_prod for firm in firms])
+                # Get probabilities to imitate other firms
+                IM_prob = 1/np.abs(self.machine_prod - other_prods)
+                IM_prob = np.nan_to_num(IM_prob, posinf=0, neginf=0)
+
+            if sum(IM_prob) > 0:
+                # Pick firm to imitate from normalized cumulative imitation prob
+                IM_prob = np.cumsum(IM_prob)/np.cumsum(IM_prob)[-1]
+                j = bisect.bisect_right(IM_prob,
+                                        self.model.RNGs["Firms_RD"].uniform(0, 1))
+                return firms[j].machine_prod
+        else:
+            return 0
+
+    def update_prod_cost(self, prod) -> None:
+        """Computes the unit cost of production for this firm.
+        
+        Args:
+            prod            : Firm productivity
+        """
+
+        # Use reduced productivity in case of flood shock
+        if self.damage_coef > 0:
+            prod -= prod * self.damage_coef
+        self.cost = self.wage / prod
 
     def update_price(self, markup: float=0.3) -> None:
       """Update firm unit price. """
@@ -892,7 +963,7 @@ class CapitalFirm(Firm):
         """Advertise: create new brochures, select new clients, send brochures."""
 
         # Create brochures
-        self.brochure = {"prod": self.prod, "price": self.price}
+        self.brochure = {"prod": self.machine_prod, "price": self.price}
 
         # Randomly sample other firms to become clients
         firms = list(set(self.model.get_firms(self.region)) - set([self]))
@@ -910,12 +981,12 @@ class CapitalFirm(Firm):
         for client in self.clients:
             client.offers[self] = self.brochure
 
-    def set_wage(self) -> None:
+    def update_wage(self) -> None:
         """Set firm wage, based on minimum wage and current top wage """
 
         # Set new wage to current top wage in the region, bounded by minimum wage
         gov = self.model.governments[self.region]
-        return max(gov.min_wage, gov.top_wage)
+        self.wage = max(gov.min_wage, gov.top_wage)
 
     def accounting_orders(self) -> None:
         """Check if all orders can be satisfied, else: cancel or reduce orders. """
@@ -960,15 +1031,30 @@ class CapitalFirm(Firm):
     def stage1(self) -> None:
         """First stage of capital firm step function:
            1) Compute flood damage
-           2) update capital, cost and price
-           3) Advertise own machines.
+           2) Research and development
+           3) Update capital, cost and price
+           4) Advertise own machines.
         """
 
-        # First inherit functionality of Firm agents (here: update capital)
-        super().stage1()
+        # -- FLOOD SHOCK: compute damage coefficient -- #
+        if self.model.flood_now:
+            flood_depth = self.flood_depths[self.model.flood_return]
+            self.damage_coef = depth_to_damage("Industry", flood_depth)
+        else:
+            self.damage_coef = 0
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
+
+        # -- RESEARCH AND DEVELOPMENT -- #
+        if self.model.firms_RD:
+            self.RD()
+        # Update capital and reset debt
+        self.update_capital()
+        self.debt = 0
 
         # CapitalFirms-specific: update production cost + price and advertise
-        self.update_prod_cost()
+        self.update_prod_cost(self.prod)
         self.update_price()
         self.advertise()
 
@@ -1004,6 +1090,9 @@ class CapitalFirm(Firm):
         labor_demand = self.get_labor_demand()
         # For capital firms: bound labor demand by real demand and productivity
         labor_demand = min(labor_demand, round(self.real_demand / self.prod))
+        # Add labor demand for R&D
+        if self.model.firms_RD:
+            labor_demand += round(self.RD_budget / self.wage)
 
         # Open vacancies and fire employees
         self.hire_and_fire(labor_demand)
@@ -1033,7 +1122,7 @@ class CapitalFirm(Firm):
             self.reduce_orders()
 
         # Update profits and add earnings to net worth
-        self.profits = self.get_profits()
+        self.profits = self.get_profits(RD=self.model.firms_RD)
         # Update profits and add earnings to net worth
         self.update_net_worth()
         # If new worth is positive firm is not credit constrained
@@ -1153,8 +1242,9 @@ class ConsumptionFirm(Firm):
         # -- INITIAL MARKET PARAMETERS -- #
         self.competitiveness = np.repeat(competitiveness, self.model.n_regions+1)
         self.production_made = 1
+        self.old_prod = self.prod
 
-    def set_wage(self, b: float=0.2) -> None:
+    def update_wage(self, b: float=0.2) -> None:
         """Set firm wage, based on average regional productivity
            and regional minimum wage.
 
@@ -1221,10 +1311,26 @@ class ConsumptionFirm(Firm):
 
     def stage1(self) -> None:
         """First stage of consumption firm step function:
-           Flood damage, update capital, place machine orders."""
+           First stage of capital firm step function:
+           1) Compute flood damage
+           2) Update capital, cost and price
+           3) Advertise own machines.
+        """
 
-        # Inherit Firm class function: flood damage and update capital
-        super().stage1()
+        # -- FLOOD SHOCK: compute damage coefficient -- #
+        if self.model.flood_now:
+            flood_depth = self.flood_depths[self.model.flood_return]
+            self.damage_coef = depth_to_damage("Industry", flood_depth)
+        else:
+            self.damage_coef = 0
+
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
+
+        # Update capital and reset debt
+        self.update_capital()
+        self.debt = 0
 
         # Decide whether to expand
         n_expansion = self.capital_investment()
@@ -1238,11 +1344,9 @@ class ConsumptionFirm(Firm):
         if n_replacements > 0 or n_expansion > 0:
             if self.net_worth > (self.size * self.wage):
                 # Order new machines for expansion and replacement
-                self.quantity_ordered = self.place_order(n_expansion,
-                                                         n_replacements)
+                self.quantity_ordered = self.place_order(n_expansion, n_replacements)
                 # Set number of machines to be replaced after expansion
-                self.machines_to_replace = max(0, self.quantity_ordered -
-                                                  n_expansion)
+                self.machines_to_replace = max(0, self.quantity_ordered - n_expansion)
 
     def stage2(self) -> None:
         pass

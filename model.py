@@ -93,16 +93,16 @@ INIT_MK  = {        C26: 0.25,
                     Wholesale_Retail: 0.25}
 
 
-# -- FLOOD ATTRIBUTES -- #
-FLOOD_WHEN = {40: 1000, 80: 100}  # Flood occurrence (timestep: return period)
 # -- ADAPTATION ATTRIBUTES -- #
 AVG_HH_CONNECTIONS = 7
+
 
 class CRAB_Model(Model):
     """Model class for the CRAB model. """
 
     def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
+                 firms_RD: bool=True, flood_when: dict={},
                  CCA: bool=True, social_net: bool=True) -> None:
         """Initialization of the CRAB model.
 
@@ -111,6 +111,8 @@ class CRAB_Model(Model):
             HH_attributes       : Household attributes from synthetic population file
             firm_flood_depths   : Firm buildings flood depths per return period
             PMT_weights         : Weights for household CCA decision-making
+            firms_RD            : Boolean (firms research and development on/off)
+            flood_when          : Dict (year: return period) of flood occurrence(s)
             CCA                 : Boolean (climate change adaptation on/off)
             social_net          : Boolean (social network on/off)
         """
@@ -134,10 +136,12 @@ class CRAB_Model(Model):
             self.RNGs[agent_class] = np.random.default_rng(random_seed + i)
         # Create separate random generator for household adaptation process
         self.RNGs["Adaptation"] = np.random.default_rng(random_seed + i + 1)
+        self.RNGs["Firms_RD"] = np.random.default_rng(random_seed + i + 2)
         # ------------------------------
 
         # -- FLOOD and ADAPTATION ATTRIBUTES -- #
-        self.CCA = CCA  # True/False (adaptation on/off)
+        self.flood_when = flood_when
+        self.CCA = CCA
         if self.CCA:
             self.social_net = social_net
             self.PMT_weights = PMT_weights
@@ -200,7 +204,9 @@ class CRAB_Model(Model):
                 # Also keep track of clients on supplier side
                 firm.supplier.clients.append(firm)
 
-        # -- FIRM EVOLUTION ATTRIBUTES (per region) -- #
+        # -- FIRM ATTRIBUTES (per region) -- #
+        self.firms_RD = firms_RD
+        # Keep track of firms leaving and entering
         self.firm_subsidiaries = defaultdict(list)
         self.firms_to_remove = defaultdict(list)
 
@@ -256,7 +262,7 @@ class CRAB_Model(Model):
             # Initialize productivity as fraction of regional top productivity
             x_low, x_up, a, b = (-0.075, 0.075, 2, 4)
             fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
-            old_prod = np.around(gov.top_prod[type(firm)] * fraction_prod, 3)
+            machine_prod = np.around(gov.top_prod[type(firm)] * fraction_prod, 3)
             # Get brochure from best capital firm of same type
             brochure = gov.best_cap[type(firm)].brochure
             prod = brochure["prod"]
@@ -269,7 +275,7 @@ class CRAB_Model(Model):
                              init_n_machines=1, init_cap_amount=capital_amount,
                              markup = markup, cap_out_ratio=firm.cap_out_ratio,
                              sales=capital_amount, wage=firm.wage, price=firm.price,
-                             prod=prod, old_prod=old_prod, lifetime=0)
+                             prod=prod, machine_prod=machine_prod, lifetime=0)
         elif isinstance(firm, ConsumptionFirm):
             prod = supplier.brochure["prod"]
             # Create new firm
@@ -445,9 +451,9 @@ class CRAB_Model(Model):
     
 
         # -- FLOOD SHOCK -- #
-        if self.schedule.time in FLOOD_WHEN.keys():
+        if self.schedule.time in self.flood_when.keys():
             self.flood_now = True
-            self.flood_return = FLOOD_WHEN[self.schedule.time]
+            self.flood_return = self.flood_when[self.schedule.time]
         else:
             self.flood_now = False
             self.flood_return = 0
@@ -465,7 +471,12 @@ class CRAB_Model(Model):
             self.governments[region].bailout_cost = 0
             self.governments[region].new_firms_resources = 0
 
-            self.firms_to_remove[region] = []
+            # TODO: put back here
+            # self.firms_to_remove[region] = []
 
         # -- OUTPUT COLLECTION -- #
         self.datacollector.collect(self)
+
+        # TODO: put back above
+        for region in REGIONS:
+            self.firms_to_remove[region] = []

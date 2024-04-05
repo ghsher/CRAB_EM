@@ -29,14 +29,14 @@ TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # NOTE: TESTING, export turned off
 
 
-FRAC_CONS =  { Industry: 0.15,
-                Construction: 0.15,
-                    Transport: 0.1,
-                    Agriculture: 0.1,
-                    Utilities: 0.1,
-                    Private_services: 0.25,
-                    Public_services: 0.05,
-                    Wholesale_Retail: 0.1}
+FRAC_CONS = {Industry: 0.15,
+             Construction: 0.15,
+             Transport: 0.1,
+             Agriculture: 0.1,
+             Utilities: 0.1,
+             Private_services: 0.25,
+             Public_services: 0.05,
+             Wholesale_Retail: 0.1}
 
 
 FRAC_EXP = 0                # Multiplication factor for export each timestep
@@ -176,7 +176,7 @@ class Government(Agent):
         cap_firms = self.model.get_firms_by_type(C26, self.region)
         cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//3)
         # Collect capital firm productivities (of last timestep)
-        firm_prod_dict = {firm: firm.old_prod / firm.price
+        firm_prod_dict = {firm: firm.machine_prod / firm.price
                           for firm in cap_firms if firm.region == self.region}
         # Return firm with best prod/price ratio
         return max(firm_prod_dict, key=firm_prod_dict.get, default=None)
@@ -296,7 +296,6 @@ class Government(Agent):
             self.demand_RoW = FRAC_EXP_INIT * total_consumption
 
         # Save regional and export demands per consumption sector
-        # TODO: We should add this in a loop  dict
         for k, v in FRAC_CONS.items():
             self.regional_demands[k] = round(v * total_consumption, 3)
             self.export_demands[k] = round(v * self.demand_RoW, 3)
@@ -304,10 +303,6 @@ class Government(Agent):
         # Add flood damage repair expenses to construction sector
         self.regional_demands[Construction] += self.total_repair_expenses
         self.total_repair_expenses = 0
-
-        # service_consumption = total_consumption - goods_consumption
-
-
 
     def stage6(self) -> None:
         """Sixth stage of Government step function. """
@@ -338,12 +333,11 @@ class Government(Agent):
         self.top_wage = max(firm.wage for firm in
                             self.model.get_cons_firms(self.region))
 
-
         # Get total capital and capital for firm subsidiaries per sector
         for firm_type in FIRM_TYPES:
             capital = self.get_capital(firm_type)
             self.total_capital[firm_type] = capital[0]
             self.capital_new_firm[firm_type] = capital[1]
-            top_prod = self.get_best_cap(firm_type)
-            self.top_prod[firm_type] = top_prod.old_prod
-            self.best_cap[firm_type] = top_prod
+            best_cap = self.get_best_cap(firm_type)
+            self.top_prod[firm_type] = best_cap.machine_prod
+            self.best_cap[firm_type] = best_cap
