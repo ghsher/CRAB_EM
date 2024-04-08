@@ -19,63 +19,62 @@ model_vars = {# -- FLOOD -- #
             #   "Flood intensity": "flood_return",
 
 			  # -- AGENT COUNTS -- #
-			#   "n_agents": 
-			#   		lambda m: m.schedule.get_agent_count(),
-			#   "n_households": 
-			#   		lambda m: len(m.get_households(REGION)),
-			#   "n_c26_firms": 
-		  	# 		lambda m: len(m.get_firms_by_type(C26, REGION)),
-			#   "n_ind_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Industry, REGION)),
-            #   "n_cons_firms": 
-		  	# 		lambda m: len(m.get_firms_by_type(Construction, REGION)),
-			#   "n_trans_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Transport, REGION)),
-			#   "n_agr_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
-			#   "n_priv_serv_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
-			#   "n_pub_serv_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
-            #   "n_pub_utilities_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
-            #   "n_retail_firms": 
-			#   		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
-
-			  # -- CONSUMPTION/DEMAND VARIABLES -- #
+			  "N households": 
+			  		lambda m: len(m.get_households(REGION)),
+			  "n_c26_firms": 
+		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
+			  "n_ind_firms": 
+			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
+              "n_cons_firms": 
+		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
+			  "n_trans_firms": 
+			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
+			  "n_agr_firms": 
+			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
+			  "n_priv_serv_firms": 
+			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
+			  "n_pub_serv_firms": 
+			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
+              "n_pub_utilities_firms": 
+			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
+              "n_retail_firms": 
+			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
+            
 			  "HH consumption": 
 			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			#   "Regional demand":
-			#   		lambda m: sum(m.governments[REGION].regional_demands.values()),
-			#   "Export demand": 
-			# 		lambda m: sum(m.governments[REGION].export_demands.values()),
-
-			  # -- LABOUR VARIABLES -- #
+			  "Regional demand":
+			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
+			  "Export demand": 
+			  		lambda m: sum(m.governments[REGION].export_demands.values()),
 			  "Unemployment rate":
-					lambda m: m.governments[REGION].unemployment_rate,
-			#   "Min wage":
-			# 		lambda m: m.governments[REGION].min_wage,
+			  		lambda m: m.governments[REGION].unemployment_rate,
+			  "Min wage":
+			  		lambda m: m.governments[REGION].min_wage,
 			  "Avg wage":
-					lambda m: m.governments[REGION].avg_wage,
-			}
+			  		lambda m: m.governments[REGION].avg_wage,
+			  }
 
 agent_vars = {
 			  "Type":
 			  		lambda a: a.__class__.__name__,
 
 			  # -- FIRM ATTRIBUTES -- #
-			#   "Price":
-			#   	  	lambda a: getattr(a, "price", None),
-			#   "Market share":
-			#   		lambda a: getattr(a, "market_share", None)[0]
-			#   				  if getattr(a, "market_share", None) is not None
-			#   				  else None,
-			#   "Prod":
-			#   		lambda a: getattr(a, "prod", None),
-			#   "Inventories":
-			#   		lambda a: getattr(a, "inventories", None),
-			#   "N ordered":
-			#   		lambda a: getattr(a, "quantity_ordered", None),
+			  "Sales":
+			  		lambda a: getattr(a, "sales", None),
+			  "Price":
+			  	  	lambda a: getattr(a, "price", None),
+			  # "Market share":
+			  # 		lambda a: getattr(a, "market_share", None)[0]
+			  # 				  if getattr(a, "market_share", None) is not None
+			  # 				  else None,
+			  "Prod":
+			  		lambda a: getattr(a, "prod", None),
+			  "Machine prod":
+			  		lambda a: getattr(a, "machine_prod", None),
+			  "Inventories":
+			  		lambda a: getattr(a, "inventories", None),
+			  "N ordered":
+			  		lambda a: getattr(a, "quantity_ordered", None),
 			  "Production made":
 			  		lambda a: getattr(a, "production_made", None),
 			#   "Feasible production":

@@ -34,7 +34,10 @@ for n, seed in enumerate(RANDOM_SEEDS):
 
 	# -- INITIALIZE MODEL -- #
 	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights,
-					   CCA=True, social_net=True)
+					   firms_RD=True,
+					   flood_when={},
+					   CCA=False,
+					   social_net=False)
 
 	# -- RUN MODEL -- #
 	for _ in tqdm(range(STEPS)):
