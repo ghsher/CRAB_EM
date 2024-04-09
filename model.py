@@ -94,7 +94,7 @@ class CRAB_Model(Model):
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
                  debt_sales_ratio: float=2.0,
                  wage_sensitivity_prod: float=0.2,
-                 init_mkup: float=0.25,
+                 init_markup: float=0.25,
                  flood_when: dict={},
                  firms_RD: bool=True,
                  CCA: bool=True, social_net: bool=True) -> None:
@@ -147,9 +147,9 @@ class CRAB_Model(Model):
 
         # -- INITIALIZE AGENTS -- #
         # Agent control parameters
-        self.init_mkup = {}
+        self.init_markup = {}
         for k in N_FIRMS[REGIONS[0]]:
-            self.init_mkup[k] = init_mkup
+            self.init_markup[k] = init_markup
 
         # Add households and firms per region
         self.governments = defaultdict(list)
@@ -172,7 +172,7 @@ class CRAB_Model(Model):
                                   init_n_machines=INIT_N_MACHINES[firm_type],
                                   init_cap_amount=INIT_CAP_AMOUNT[firm_type],
                                   cap_out_ratio=INIT_KL_RATIO[firm_type],
-                                  markup=self.init_mkup[firm_type],
+                                  markup=self.init_markup[firm_type],
                                   )
             
             # -- CREATE HOUSEHOLDS -- #
@@ -257,7 +257,7 @@ class CRAB_Model(Model):
         net_worth = max(gov.avg_net_worth, 1) * fraction_wealth
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
-        markup = self.init_mkup[type(firm)]
+        markup = self.init_markup[type(firm)]
         # Initialize new supplier randomly
         suppliers = self.get_firms_by_type(C26, firm.region)
         supplier = self.RNGs[type(firm)].choice(suppliers)
