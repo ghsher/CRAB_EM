@@ -50,7 +50,7 @@ FIRMS_RD_ENABLED = True
 
 N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 200 # 5 year burn-in + 25 years model time
+STEPS = 150 # 5 year burn-in + 25 years model time
 
 FLOOD_NARRATIVES = [
         {75: 1000},
@@ -75,7 +75,7 @@ FIRM_TYPES = [
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
-        init_markup: float=0.25, flood_narrative: dict={}, #str='A',
+        init_markup: float=0.25, flood_narrative: dict={},
         seed=0, steps: int=200, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -96,7 +96,8 @@ def CRAB_model_wrapper(
         random_seed=seed)
     
     for _ in tqdm(range(STEPS), total=STEPS, leave=False,
-                  desc=f"MODEL RUN: DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, {flood_narrative}"):
+                  desc=f"MODEL RUN: DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, " +
+                       f"MKP={init_markup:.2}, FLD={flood_narrative}"):
         model.step()
 
     model_df = model.datacollector.get_model_vars_dataframe()
@@ -136,10 +137,16 @@ def CRAB_model_wrapper(
     out['Minimum Wage'] = get_minimum_wage(model_df)
 
     # 3. Firm competition
+    # TODO: Wait on understanding firm size distrs. better before capturing firm size shares.
+    # for firm in FIRM_TYPES:
+    #     name = firm.__name__
+    #     out[f'Share of Large Firms ({name})'] = get_share_large_firms(agent_dfs[firm])
+    # out['Share of Large Firms (All)'] = get_share_large_firms(agent_dfs['Firms'])
     for firm in FIRM_TYPES:
         name = firm.__name__
-        out[f'Share of Large Firms ({name})'] = get_share_large_firms(agent_dfs[firm])
-    out['Share of Large Firms (All)'] = get_share_large_firms(agent_dfs['Firms'])
+        out[f'10th Percentile Firm Size ({name})'] = get_10th_p_firm_size(agent_dfs[firm])
+        out[f'90th Percentile Firm Size ({name})'] = get_90th_p_firm_size(agent_dfs[firm])
+        out[f'Median Firm Size ({name})'] = get_median_firm_size(agent_dfs[firm])
 
     # 4. Gini (TODO)
 
@@ -149,8 +156,6 @@ def CRAB_model_wrapper(
     # TODO: Recovery
 
     # 6. Debt
-    out['Total Household Debt'] = get_total_household_debt(agent_dfs[Household])
-    out['Average Household Debt'] = get_average_household_debt(agent_dfs[Household])
     out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
     # TODO: The latter by different industries
     # TODO: Government debt/deficit
@@ -188,20 +193,21 @@ outcomes = [
     ArrayOutcome('Minimum Wage'),
     ArrayOutcome('Total Household Damages'),
     ArrayOutcome('Average Income-Weighted Damages'),
-    ArrayOutcome('Total Household Debt'),
-    ArrayOutcome('Average Household Debt'),
 
     ArrayOutcome('Firm Population'),
     ArrayOutcome('GDP'),
     ArrayOutcome('Total Firm Resources'),
     ArrayOutcome('Total Firm Debt'),
-    ArrayOutcome('Share of Large Firms (All)'),
+    # ArrayOutcome('Share of Large Firms (All)'),
 ]
 for firm in FIRM_TYPES:
     name = firm.__name__
     outcomes.append(ArrayOutcome(f'{name} Population'))
     outcomes.append(ArrayOutcome(f'{name} Production Made'))
-    outcomes.append(ArrayOutcome(f'Share of Large Firms ({name})'))
+    # outcomes.append(ArrayOutcome(f'Share of Large Firms ({name})'))
+    outcomes.append(ArrayOutcome(f'10th Percentile Firm Size ({name})'))
+    outcomes.append(ArrayOutcome(f'90th Percentile Firm Size ({name})'))
+    outcomes.append(ArrayOutcome(f'Median Firm Size ({name})'))
 model.outcomes = outcomes
 
 # Run experiments!!!
