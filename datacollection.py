@@ -117,7 +117,7 @@ agent_vars['Firm Size'] = lambda a: getattr(a, 'size', None)
 #		measures, we should track this at an agent level
 #		TODO: Check with Liz about implementation (doesn't update until all repairs are done)
 #				(see issue_archive.md)
-agent_vars['Damages'] = lambda a: getattr(a, 'monetary_damages', None)
+agent_vars['Damages'] = lambda a: getattr(a, 'monetary_damage', None)
 
 #	b. Net worth recovery (by household)
 # TODO: For now, handle in post
@@ -133,7 +133,7 @@ agent_vars['Damages'] = lambda a: getattr(a, 'monetary_damages', None)
 ### 6. DEBT (outcome) ###
 #########################
 
-#	a. Agent debt
+#	a. Firm debt
 agent_vars['Debt'] = lambda a: getattr(a, 'debt', None)
 
 #	b. Government deficit

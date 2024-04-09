@@ -14,7 +14,11 @@ from CRAB_agents import *
 def get_model_data(col, model_data):
     return model_data[col].tolist()
 
-def get_aggd_agent_data(col, agg, agent_data):
+def get_aggd_agent_data(col, agg, agent_data, quant=0.5):
+    if agg == 'quantile':
+        def q(x):
+            return x.quantile(quant)
+        return agent_data.agg({col:q})[col].tolist()
     return agent_data.agg({col:agg})[col].tolist()
 
 ######################################################
@@ -86,10 +90,18 @@ def get_minimum_wage(model_data):
 def get_share_large_firms(agent_data, industry_pop=None):
     if industry_pop is None:
         industry_pop = get_population(agent_data)
-    num_large_firms = agent_data.obj[agent_data.obj['Firm Size'] >= 200].groupby('Step').size()
+    num_large_firms = agent_data.obj[agent_data.obj['Firm Size'] >= 50].groupby('Step').size()
     share_large_firms = num_large_firms / industry_pop
 
     return share_large_firms.tolist()
+
+#   b. Quantiles firm size
+def get_10th_p_firm_size(agent_data):
+    return get_aggd_agent_data('Firm Size', 'quantile', agent_data, quant=0.1)
+def get_90th_p_firm_size(agent_data):
+    return get_aggd_agent_data('Firm Size', 'quantile', agent_data, quant=0.9)
+def get_median_firm_size(agent_data):
+    return get_aggd_agent_data('Firm Size', 'median', agent_data)
 
 ###########################
 ### 5. IMPACT (outcome) ###
@@ -105,6 +117,7 @@ def get_average_damage_income_ratio(hh_data):
     hh_data['Damages/Income'] = hh_data['Damages'] / hh_data['Wage']
     return get_aggd_agent_data('Damages/Income', 'mean', hh_data.groupby('Step'))
 
+#   b. Household wealth recovery
 # def recovery(hh_data):
 #       FML HOW TODO THIS 
 #       just measure in mesa hahaha
@@ -113,12 +126,9 @@ def get_average_damage_income_ratio(hh_data):
 ### 6. DEBT (outcome) ###
 #########################
 
-#   a(i). Total household debt
-def get_total_household_debt(hh_data):
-    return get_aggd_agent_data('Debt', 'sum', hh_data)
-#   a(ii). Average household debt
-def get_average_household_debt(hh_data):
-    return get_aggd_agent_data('Debt', 'mean', hh_data)
-#   a(iii). Total firm  debt
+#   a(i). Total firm  debt
 def get_total_firm_debt(firm_data):
     return get_aggd_agent_data('Debt', 'sum', firm_data)
+
+#   b. Government debt/deficit
+#       TODO
