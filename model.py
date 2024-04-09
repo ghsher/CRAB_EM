@@ -64,7 +64,8 @@ class CRAB_Model(Model):
                  firms_RD: bool=True, CCA: bool=True, social_net: bool=True,
                  flood_when: dict={},
                  debt_sales_ratio: float=2.0,
-                 wage_sensitivity_prod: float=0.2) -> None:
+                 wage_sensitivity_prod: float=0.2,
+                 init_mkup: float=0.25) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -114,10 +115,15 @@ class CRAB_Model(Model):
 
 
         # -- INITIALIZE AGENTS -- #
+        # Agent control parameters
+        self.init_mkup = {}
+        for k in N_FIRMS[REGIONS[0]]:
+            self.init_mkup[k] = init_mkup
+
+        # Add households and firms per region
         self.governments = defaultdict(list)
         self.firms = defaultdict(list)
         self.households = defaultdict(list)
-        # Add households and firms per region
         for region in REGIONS:
             # -- CREATE FIRMS -- #
             self.firms[region] = {}
@@ -134,7 +140,9 @@ class CRAB_Model(Model):
                                   net_worth=INIT_NET_WORTH[firm_type],
                                   init_n_machines=INIT_N_MACHINES[firm_type],
                                   init_cap_amount=INIT_CAP_AMOUNT[firm_type],
-                                  cap_out_ratio=CAP_OUT_RATIO[firm_type])
+                                  cap_out_ratio=CAP_OUT_RATIO[firm_type],
+                                  markup=self.init_mkup[firm_type],
+                                  )
             
             # -- CREATE HOUSEHOLDS -- #
             self.households[region] = []
