@@ -31,44 +31,50 @@ from ema_workbench import (
     MultiprocessingEvaluator,
     perform_experiments,
     Samplers,
-    save_results
+    save_results,
 )
 
 from model import CRAB_Model
+from CRAB_agents import *
+from ema_data_collection import *
 
 HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
 FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
 PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
 CCA_ENABLED = True
 SOCIAL_NET_ENABLED = True
+FIRMS_RD_ENABLED = True
 
 N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 120 # 5 year burn-in + 25 years model time
+STEPS = 5 # 5 year burn-in + 25 years model time
 
 FLOOD_NARRATIVES = {
         'A' : {75: 1000},
         'B' : {40: 100, 60: 100, 80: 100, 100: 100},
+        'C' : {q:r for q,r in list(zip(range(30, 130, 5), [10 for _ in range(20)]))},
+        'D' : {60: 1000, 100: 100},
+        'E' : {60: 1000, 120: 1000},
 }
 
-# Model KPIs are just CRAB_Model Datacollector column names
-MODEL_KPIs = ['HH consumption', 'Unemployment rate', 'Avg wage']
-
-# Agent KPIs are given as column names, agent type, aggregation scheme,
-# and disaggregation (i.e. agent grouping) scheme
-# TODO: After replacing the DataCollector, implement disagg
-AGENT_KPIs = [
-    {'name': 'Production made', 'type': 'Firm',
-     'agg': 'sum', 'disagg': ['None']},
-    {'name': 'Net worth', 'type': 'Household',
-     'agg': 'mean', 'disagg': ['None']},
+FIRM_TYPES = [
+	Agriculture,
+	Industry,
+	Construction,
+	Transport,
+	Utilities,
+	Private_services,
+	Public_services,
+	Wholesale_Retail,
+    C26,
 ]
+
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
         flood_narrative: str='A',
         seed=0, steps: int=200, outcomes: list=[]) -> None:
-    
+
     model = CRAB_Model(
         # Standard parameters
         # TODO: If including HH/Firm attributes as a factor, rework this.
@@ -77,37 +83,77 @@ def CRAB_model_wrapper(
         #  the file name).
         HH_attributes=HH_ATTRIBUTES,
         firm_flood_depths=FIRM_ATTRIBUTES, PMT_weights=PMT_WEIGHTS,
+        firms_RD=FIRMS_RD_ENABLED,
         CCA=CCA_ENABLED, social_net=SOCIAL_NET_ENABLED,
         # Controllable parameters
         debt_sales_ratio=debt_sales_ratio,
         wage_sensitivity_prod=wage_sensitivity_prod,
-        flood_times=FLOOD_NARRATIVES[flood_narrative],
+        flood_when=FLOOD_NARRATIVES[flood_narrative],
         random_seed=seed)
     
-    # TODO: Consider adding a TQDM tracker here.
     for _ in tqdm(range(STEPS), total=STEPS, leave=False,
                   desc=f"MODEL RUN: DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, {flood_narrative}"):
         model.step()
 
-    # TODO: Replace all of the below when you've replaced the Model's DC
-    #       (should probably be a priority right now)
-    # TODO: Also, handle disagg.
     model_df = model.datacollector.get_model_vars_dataframe()
     agent_df = model.datacollector.get_agent_vars_dataframe()
-    out = {}
-    for KPI in MODEL_KPIs:
-        out[KPI] = model_df[KPI].tolist()
-    for KPI in AGENT_KPIs:
-        out_name = f"{KPI['agg'].capitalize()} {KPI['name']}"
-        sub_df = None
-        if KPI['type'] == 'Household':
-            sub_df = agent_df[agent_df['Type'] == "Household"]
-        elif KPI['type'] == 'Firm':
-            sub_df = agent_df[(agent_df['Type'] != "Household") & 
-                              (agent_df['Type'] != "Government")]
-        out[out_name] = sub_df.groupby('Step').agg({KPI['name']: KPI['agg']})[KPI['name']].tolist()
 
+    # model_df.to_csv('results/0408_test_model_data.csv')
+    # agent_df.to_csv('results/0408_test_agent_data.csv')
+    # Separate and group agent data for aggregation
+    # TODO: Handle disaggregation for household metrics here.
+    agent_dfs = {}
+    for firm in FIRM_TYPES:
+        agent_dfs[firm] = agent_df[agent_df['Type'] == firm.__name__].groupby('Step')
+    agent_dfs[Household] = agent_df[agent_df['Type'] == 'Household'].groupby('Step')
+    agent_dfs['Firms'] = agent_df[(agent_df['Type'] != 'Household') &
+                                  (agent_df['Type'] != 'Government')].groupby('Step')
+    del agent_df
+
+    out = {}
+
+    # 0. Populations
+    out['Household Population'] = get_population(agent_dfs[Household], aslist=True)
+    out['Firm Population'] = get_population(agent_dfs['Firms'])
+    for firm in FIRM_TYPES:
+        name = firm.__name__
+        out[f'{name} Population'] = get_population(agent_dfs[firm], aslist=True)
+
+    # 1. Economic performance
+    for firm in FIRM_TYPES:
+        name = firm.__name__
+        out[f'{name} Production Made'] = get_production(name, model_df)
+    out['GDP'] = get_GDP(model_df)
+    out['Unemployment Rate'] = get_unemployment(agent_dfs[Household])
+
+    # 2. Wealth
+    out['Median Net Worth'] = get_median_net_worth(agent_dfs[Household])
+    out['Total Firm Resources'] = get_total_net_worth(agent_dfs['Firms'])
+    out['Median House Value'] = get_median_house_value(agent_dfs[Household])
+    out['Median Wage'] = get_median_wage(agent_dfs[Household])
+    out['Minimum Wage'] = get_minimum_wage(model_df)
+
+    # 3. Firm competition
+    for firm in FIRM_TYPES:
+        name = firm.__name__
+        out[f'Share of Large Firms ({name})'] = get_share_large_firms(agent_dfs[firm])
+    out['Share of Large Firms (All)'] = get_share_large_firms(agent_dfs['Firms'])
+
+    # 4. Gini (TODO)
+
+    # 5. Impact
+    out['Total Household Damages'] = get_total_damage(agent_dfs[Household])
+    out['Average Income-Weighted Damages'] = get_average_damage_income_ratio(agent_dfs[Household])
+    # RECOVERY: TODO
+
+    # 6. Debt
+    out['Total Household Debt'] = get_total_household_debt(agent_dfs[Household])
+    out['Average Household Debt'] = get_average_household_debt(agent_dfs[Household])
+    out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
+    # TODO: The latter by different industries
+    # TODO: Government debt/deficit
     return out
+
 
 # Runtime output settings
 # ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
@@ -124,18 +170,35 @@ model.replications = N_REPLICATIONS
 model.uncertainties = [
     RealParameter("debt_sales_ratio", 0.8, 5),
     RealParameter("wage_sensitivity_prod", 0.0, 1.0),
-    CategoricalParameter("flood_narrative", ['A', 'B'], pff=True),
+    CategoricalParameter("flood_narrative", list('ABCDE'), pff=True),
 ]
 
 model.constants = []
 
 # 3. Define outcomes of interest to track
-outcomes = []
-for KPI in MODEL_KPIs:
-    outcomes.append(ArrayOutcome(KPI))
-for KPI in AGENT_KPIs:
-    out_name = f"{KPI['agg'].capitalize()} {KPI['name']}"
-    outcomes.append(ArrayOutcome(out_name))
+outcomes = [
+    ArrayOutcome('Household Population'),
+    ArrayOutcome('Unemployment Rate'),
+    ArrayOutcome('Median Net Worth'),
+    ArrayOutcome('Median House Value'),
+    ArrayOutcome('Median Wage'),
+    ArrayOutcome('Minimum Wage'),
+    ArrayOutcome('Total Household Damages'),
+    ArrayOutcome('Average Income-Weighted Damages'),
+    ArrayOutcome('Total Household Debt'),
+    ArrayOutcome('Average Household Debt'),
+
+    ArrayOutcome('Firm Population'),
+    ArrayOutcome('GDP'),
+    ArrayOutcome('Total Firm Resources'),
+    ArrayOutcome('Total Firm Debt'),
+    ArrayOutcome('Share of Large Firms (All)'),
+]
+for firm in FIRM_TYPES:
+    name = firm.__name__
+    outcomes.append(ArrayOutcome(f'{name} Population'))
+    outcomes.append(ArrayOutcome(f'{name} Production Made'))
+    outcomes.append(ArrayOutcome(f'Share of Large Firms ({name})'))
 model.outcomes = outcomes
 
 # Run experiments!!!
@@ -144,8 +207,8 @@ model.outcomes = outcomes
 #        until you fix the PFF problem
 with SequentialEvaluator(model) as evaluator:
     results = evaluator.perform_experiments(
-        scenarios=10,
+        scenarios=1,
         uncertainty_sampling=Samplers.LHS
     )
     
-save_results(results, "results/0328_EMA_test_run.tar.gz")
+save_results(results, "results/0408_EMA_test_run.tar.gz")
