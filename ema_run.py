@@ -75,7 +75,7 @@ FIRM_TYPES = [
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
-        init_mkup: float=0.25, flood_narrative: dict={}, #str='A',
+        init_markup: float=0.25, flood_narrative: dict={}, #str='A',
         seed=0, steps: int=200, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -91,7 +91,7 @@ def CRAB_model_wrapper(
         # Controllable parameters
         debt_sales_ratio=debt_sales_ratio,
         wage_sensitivity_prod=wage_sensitivity_prod,
-        init_mkup=init_mkup,
+        init_markup=init_markup,
         flood_when=flood_narrative,
         random_seed=seed)
     
@@ -214,4 +214,4 @@ with SequentialEvaluator(model) as evaluator:
         uncertainty_sampling=Samplers.LHS
     )
     
-save_results(results, "results/0408_EMA_test_run.tar.gz")
+save_results(results, "results/0409_single_run.tar.gz")
