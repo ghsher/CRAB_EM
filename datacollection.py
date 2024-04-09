@@ -14,102 +14,134 @@ from CRAB_agents import *
 
 REGION = 0
 
-model_vars = {# -- FLOOD -- #
-			#   "Flood": "flood_now",
-            #   "Flood intensity": "flood_return",
+FIRM_TYPES = [
+	Agriculture,
+	Industry,
+	Construction,
+	Transport,
+	Utilities,
+	Private_services,
+	Public_services,
+	Wholesale_Retail,
+    C26,
+    # C27,
+    # C28,
+    # C29,
+    # C30,
+]
 
-			  # -- AGENT COUNTS -- #
-			  "N households": 
-			  		lambda m: len(m.get_households(REGION)),
-			  "n_c26_firms": 
-		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
-			  "n_ind_firms": 
-			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
-              "n_cons_firms": 
-		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
-			  "n_trans_firms": 
-			  		lambda m: len(m.get_firms_by_type(Transport, REGION)),
-			  "n_agr_firms": 
-			  		lambda m: len(m.get_firms_by_type(Agriculture, REGION)),
-			  "n_priv_serv_firms": 
-			  		lambda m: len(m.get_firms_by_type(Private_services, REGION)),
-			  "n_pub_serv_firms": 
-			  		lambda m: len(m.get_firms_by_type(Public_services, REGION)),
-              "n_pub_utilities_firms": 
-			  		lambda m: len(m.get_firms_by_type(Utilities, REGION)),
-              "n_retail_firms": 
-			  		lambda m: len(m.get_firms_by_type(Wholesale_Retail, REGION)),
-            
-			  "HH consumption": 
-			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			  "Regional demand":
-			  		lambda m: sum(m.governments[REGION].regional_demands.values()),
-			  "Export demand": 
-			  		lambda m: sum(m.governments[REGION].export_demands.values()),
-			  "Unemployment rate":
-			  		lambda m: m.governments[REGION].unemployment_rate,
-			  "Min wage":
-			  		lambda m: m.governments[REGION].min_wage,
-			  "Avg wage":
-			  		lambda m: m.governments[REGION].avg_wage,
-			  }
+model_vars = {}
+agent_vars = {}
 
-agent_vars = {
-			  "Type":
-			  		lambda a: a.__class__.__name__,
+# TODO :: replace this.
+# Jan's right the DC is truly shitty (esp. the lack of ability to group and the incredible waste of space)
 
-			  # -- FIRM ATTRIBUTES -- #
-			  "Sales":
-			  		lambda a: getattr(a, "sales", None),
-			  "Price":
-			  	  	lambda a: getattr(a, "price", None),
-			  # "Market share":
-			  # 		lambda a: getattr(a, "market_share", None)[0]
-			  # 				  if getattr(a, "market_share", None) is not None
-			  # 				  else None,
-			  "Prod":
-			  		lambda a: getattr(a, "prod", None),
-			  "Machine prod":
-			  		lambda a: getattr(a, "machine_prod", None),
-			  "Inventories":
-			  		lambda a: getattr(a, "inventories", None),
-			  "N ordered":
-			  		lambda a: getattr(a, "quantity_ordered", None),
-			  "Production made":
-			  		lambda a: getattr(a, "production_made", None),
-			#   "Feasible production":
-			#   		lambda a: getattr(a, "feasible_production", None),
-			#   "Sum past demand":
-			#   		lambda a: sum(getattr(a, "past_demand", None))
-			#   				  if getattr(a, "past_demand", None) is not None
-			#   				  else None,
-			#   "Past demand":
-			#   		lambda a: getattr(a, "past_demand", None)[-1]
-			#   				  if getattr(a, "past_demand", None) is not None
-			#   				  else None,
-			#   "Real demand":
-			#   		lambda a: getattr(a, "real_demand", None),
-			#   "Demand filled":
-			#   		lambda a: getattr(a, "demand_filled", None),
-		  	#   "Demand unfilled":
-			#   		lambda a: getattr(a, "unfilled_demand", None),
-			  "Wage":
-			  		lambda a: getattr(a, "wage", None),
-			  "Net worth":
-			  		lambda a: getattr(a, "net_worth", None),
-			  "Debt":
-			  		lambda a: getattr(a, "debt", None),
-			  "Size":
-			  		lambda a: getattr(a, "size", None),
-            #   "Supplier":
-			#   		lambda a: getattr(a, "supplier", None),
-			#   "Labor demand":
-			#   		lambda a: getattr(a, "desired_employees", None),
-            #   "KL ratio":
-			#   		lambda a: getattr(a, "cap_out_ratio", None),
-			#   "Capital amount":
-			#   		lambda a: sum(vin.amount
-			#   					  for vin in getattr(a, "capital_vintage", None))
-			#   				  if getattr(a, "capital_vintage", None) is not None
-			#   				  else None,
-			  }
+agent_vars['Type'] = lambda a: a.__class__.__name__
+# agent_vars['Region'] = lambda a: getattr(a, "region", None)
+
+######################################################
+### 0. POPULATION (outcome & endogenous predictor) ###
+######################################################
+
+# Agents report Type, so this can be post-processed
+
+#########################################
+### 1. ECONOMIC PERFORMANCE (outcome) ###
+#########################################
+
+#	a. Production (per type of firm)
+for type in FIRM_TYPES:
+	name = type.__name__
+	model_vars[f'{name} Production Made'] = lambda m: sum([
+			getattr(f, "production_made", 0) for f in 
+			m.get_firms_by_type(type, REGION)
+		])
+
+#	b. Employment status (per household)
+agent_vars['Employed'] = \
+	lambda a: True if getattr(a, "employer", None) is not None else False
+
+##################################################
+### 2. WEALTH (outcome & endogenous predictor) ###
+##################################################
+
+#	a. Net worth / Accrued wealth 
+# 	 TODO: This is missing the value of one's adaptation measures, in theory
+agent_vars['Net Worth'] = lambda a: getattr(a, "net_worth", None)
+
+#	b. House value 
+# 	 TODO: This is missing the value of one's adaptation measures, in theory
+agent_vars['House Value'] = lambda a: getattr(a, "house_value", None)
+
+#	c. Income (we'll later extract this just for households)
+agent_vars['Wage'] = lambda a: getattr(a, "wage", None)
+
+##################################################
+### 3. FIRM CRITICALITY (endogenous predictor) ###
+##################################################
+
+# 	a. Firm size
+#		Will be used to proxy industry competition/agglomeration
+agent_vars['Firm Size'] = lambda a: getattr(a, 'size', None)
+
+# model_vars['Population: Small Firms'] = lambda m: len([
+# 			f for f in m.get_firms(REGION)
+# 			if f.size > SIZE_THRESHOLDS['Small']
+# 			and f.size <= SIZE_THRESHOLDS['Medium']
+# 		])
+# model_vars['Population: Medium Firms'] = lambda m: len([
+# 			f for f in m.get_firms(REGION)
+# 			if f.size > SIZE_THRESHOLDS['Medium']
+# 			and f.size <= SIZE_THRESHOLDS['Large']
+# 		])
+# model_vars['Population: Large Firms'] = lambda m: len([
+# 			f for f in m.get_firms(REGION)
+# 			if f.size > SIZE_THRESHOLDS['Large']
+# 		])
+
+###############################
+### 4. INEQUALITY (outcome) ###
+###############################
+
+# Agents report Wage and Net worth, so Gini can be post-processed
+# Distributional effects can also be measured by keeping agent data
+#  partially disaggregated by adaptive capacity & income quartile
+
+
+#################################
+### 5. FLOOD IMPACT (outcome) ###
+#################################
+
+#	a. Flood damages
+#	    Since we want to be able to normalize Damages by income or other 
+#		measures, we should track this at an agent level
+#		TODO: Check with Liz about implementation (doesn't update until all repairs are done)
+#				(see issue_archive.md)
+agent_vars['Damages'] = lambda a: getattr(a, 'monetary_damages', None)
+
+#	b. Net worth recovery (by household)
+# TODO: For now, handle in post
+
+#	c. Wage level recovery (by household)
+# TODO: For now, handle in post
+
+# Agents report Wage and Net worth, so Gini can be post-processed
+# Distributional effects can also be measured by keeping agent data
+#  partially disaggregated by adaptive capacity & income quartile
+
+#########################
+### 6. DEBT (outcome) ###
+#########################
+
+#	a. Agent debt
+agent_vars['Debt'] = lambda a: getattr(a, 'debt', None)
+
+#	b. Government deficit
+# model_vars['Deficit'] = lambda m: m.get_deficit() # TODO
+
+#################################################
+### 7. OTHERS (usually endogenous predictors) ###
+#################################################
+
+# 	a. Minimum wage
+model_vars['Minimum Wage'] = lambda m: m.governments[REGION].min_wage
