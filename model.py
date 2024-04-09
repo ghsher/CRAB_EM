@@ -82,16 +82,6 @@ INIT_KL_RATIO = {   C26: 2,
                     Private_services: 1.2,
                     Public_services: 1,
                     Wholesale_Retail: 1}
-INIT_MK  = {        C26: 0.25,  
-                    Agriculture : 0.25,               # Initial markup
-                    Industry: 0.25,
-                    Construction: 0.25,
-                    Transport: 0.25,
-                    Utilities: 0.25,
-                    Private_services: 0.25,
-                    Public_services: 0.25,
-                    Wholesale_Retail: 0.25}
-
 
 # -- ADAPTATION ATTRIBUTES -- #
 AVG_HH_CONNECTIONS = 7
@@ -104,6 +94,7 @@ class CRAB_Model(Model):
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
                  debt_sales_ratio: float=2.0,
                  wage_sensitivity_prod: float=0.2,
+                 init_mkup: float=0.25,
                  flood_when: dict={},
                  firms_RD: bool=True,
                  CCA: bool=True, social_net: bool=True) -> None:
@@ -155,10 +146,15 @@ class CRAB_Model(Model):
 
 
         # -- INITIALIZE AGENTS -- #
+        # Agent control parameters
+        self.init_mkup = {}
+        for k in N_FIRMS[REGIONS[0]]:
+            self.init_mkup[k] = init_mkup
+
+        # Add households and firms per region
         self.governments = defaultdict(list)
         self.firms = defaultdict(list)
         self.households = defaultdict(list)
-        # Add households and firms per region
         for region in REGIONS:
             # -- CREATE FIRMS -- #
             self.firms[region] = {}
@@ -176,7 +172,7 @@ class CRAB_Model(Model):
                                   init_n_machines=INIT_N_MACHINES[firm_type],
                                   init_cap_amount=INIT_CAP_AMOUNT[firm_type],
                                   cap_out_ratio=INIT_KL_RATIO[firm_type],
-                                  markup=INIT_MK[firm_type],
+                                  markup=self.init_mkup[firm_type],
                                   )
             
             # -- CREATE HOUSEHOLDS -- #
@@ -261,7 +257,7 @@ class CRAB_Model(Model):
         net_worth = max(gov.avg_net_worth, 1) * fraction_wealth
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
-        markup = INIT_MK[type(firm)]
+        markup = self.init_mkup[type(firm)]
         # Initialize new supplier randomly
         suppliers = self.get_firms_by_type(C26, firm.region)
         supplier = self.RNGs[type(firm)].choice(suppliers)

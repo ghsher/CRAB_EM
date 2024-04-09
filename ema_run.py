@@ -38,24 +38,27 @@ from model import CRAB_Model
 from CRAB_agents import *
 from ema_data_collection import *
 
+print(":: Reading Adaptation & Flood Depth attribute CSVs")
 HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
 FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
 PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+print(":::: Done reading")
+
 CCA_ENABLED = True
 SOCIAL_NET_ENABLED = True
 FIRMS_RD_ENABLED = True
 
 N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 5 # 5 year burn-in + 25 years model time
+STEPS = 200 # 5 year burn-in + 25 years model time
 
-FLOOD_NARRATIVES = {
-        'A' : {75: 1000},
-        'B' : {40: 100, 60: 100, 80: 100, 100: 100},
-        'C' : {q:r for q,r in list(zip(range(30, 130, 5), [10 for _ in range(20)]))},
-        'D' : {60: 1000, 100: 100},
-        'E' : {60: 1000, 120: 1000},
-}
+FLOOD_NARRATIVES = [
+        {75: 1000},
+        {40: 100, 60: 100, 80: 100, 100: 100},
+        {q:r for q,r in list(zip(range(30, 130, 5), [10 for _ in range(20)]))},
+        {60: 1000, 100: 100},
+        {60: 1000, 120: 1000},
+]
 
 FIRM_TYPES = [
 	Agriculture,
@@ -72,7 +75,7 @@ FIRM_TYPES = [
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
-        flood_narrative: str='A',
+        init_mkup: float=0.25, flood_narrative: dict={}, #str='A',
         seed=0, steps: int=200, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -88,7 +91,8 @@ def CRAB_model_wrapper(
         # Controllable parameters
         debt_sales_ratio=debt_sales_ratio,
         wage_sensitivity_prod=wage_sensitivity_prod,
-        flood_when=FLOOD_NARRATIVES[flood_narrative],
+        init_mkup=init_mkup,
+        flood_when=flood_narrative,
         random_seed=seed)
     
     for _ in tqdm(range(STEPS), total=STEPS, leave=False,
@@ -98,8 +102,6 @@ def CRAB_model_wrapper(
     model_df = model.datacollector.get_model_vars_dataframe()
     agent_df = model.datacollector.get_agent_vars_dataframe()
 
-    # model_df.to_csv('results/0408_test_model_data.csv')
-    # agent_df.to_csv('results/0408_test_agent_data.csv')
     # Separate and group agent data for aggregation
     # TODO: Handle disaggregation for household metrics here.
     agent_dfs = {}
@@ -144,7 +146,7 @@ def CRAB_model_wrapper(
     # 5. Impact
     out['Total Household Damages'] = get_total_damage(agent_dfs[Household])
     out['Average Income-Weighted Damages'] = get_average_damage_income_ratio(agent_dfs[Household])
-    # RECOVERY: TODO
+    # TODO: Recovery
 
     # 6. Debt
     out['Total Household Debt'] = get_total_household_debt(agent_dfs[Household])
@@ -152,8 +154,8 @@ def CRAB_model_wrapper(
     out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
     # TODO: The latter by different industries
     # TODO: Government debt/deficit
-    return out
 
+    return out
 
 # Runtime output settings
 # ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
@@ -170,7 +172,8 @@ model.replications = N_REPLICATIONS
 model.uncertainties = [
     RealParameter("debt_sales_ratio", 0.8, 5),
     RealParameter("wage_sensitivity_prod", 0.0, 1.0),
-    CategoricalParameter("flood_narrative", list('ABCDE'), pff=True),
+    RealParameter("init_markup", 0.05, 0.5),
+    CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
 ]
 
 model.constants = []
