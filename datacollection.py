@@ -21,7 +21,7 @@ model_vars = {# -- FLOOD -- #
 			  		lambda m: len(m.get_households(REGION)),
 			  "n_c26_firms": 
 		  			lambda m: len(m.get_firms_by_type(C26, REGION)),
-			  "n_ind_firms": 
+			  "n_ind_firms":
 			  		lambda m: len(m.get_firms_by_type(Industry, REGION)),
               "n_cons_firms": 
 		  			lambda m: len(m.get_firms_by_type(Construction, REGION)),
@@ -120,6 +120,8 @@ agent_vars = {# -- ALL AGENTS ATTRIBUTES -- #
 			  "N expansion":
 			  		lambda a: getattr(a, "n_expansion", None),
 
+			  "KL ratio":
+			  		lambda a: getattr(a, "cap_out_ratio", None),
 			  "Size":
 			  		lambda a: getattr(a, "size", None),
 			  "Labor demand":
