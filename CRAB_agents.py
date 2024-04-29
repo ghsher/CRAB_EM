@@ -27,14 +27,13 @@ if TYPE_CHECKING:
 import numpy as np
 import math
 import bisect
-from scipy.stats import bernoulli, beta
 from collections import deque
 from mesa import Agent
 
 
 # -- FIRM INITIALIZATION VALUES -- #
-PROD_DIST = (1.05, 0.02)  # Normal distribution (mean, std) of initial productivity
-WAGE_DIST = (1, 0.02)     # Normal distribution (mean, std) of initial wages
+PROD_DIST = (1, 0.02)  # Normal distribution (mean, std) of initial productivity
+WAGE_DIST = (1, 0.02)  # Normal distribution (mean, std) of initial wages
 
 # -- FIRM CONSTANTS -- #
 INTEREST_RATE = 0.01
@@ -50,6 +49,7 @@ DAMAGE_CURVES = {"Residential":
 DAMAGE_REDUCTION = {"Elevation": 3, "Dry_proof": 0.4, "Wet_proof": 0.5}
 # -- ADAPTATION CONSTANTS -- #
 CCA_COSTS = {"Elevation": 2, "Dry_proof": 0.5, "Wet_proof": 1}
+
 
 def systemic_tax(profits: list, sales: float, quintiles: list,
                  taxes: list=[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) -> None:
@@ -443,9 +443,9 @@ class Firm(CRAB_Agent):
     def __init__(self, model: CRAB_Model, region: int, flood_depths: dict,
                  market_share: float, net_worth: int,
                  init_n_machines: int, init_cap_amount: int,
-                 cap_out_ratio: float, markup: float, sales: int=10,
-                 wage: float=None, price: float=None, prod: float=None,
-                 lifetime: int=1) -> None:
+                 cap_out_ratio: float, markup: float, supplier: Type[Firm]=None,
+                 sales: int=10, wage: float=None, price: float=None,
+                 prod: float=None, lifetime: int=1) -> None:
         """Initialize firm agent.
 
         Args:
@@ -457,12 +457,12 @@ class Firm(CRAB_Agent):
             init_n_machines     : Initial number of machines
             init_cap_amount     : Initial capital amount
             cap_out_ratio       : Capital output ratio
+            supplier            : Capital firm supplier
             markup              : Initial markup
             sales               : Initial sales
             wage                : Inital wage
             price               : Initial price
             prod                : Initial productivity
-            old_prod            : Productivity in previous timestep
             lifetime            : Current firm lifetime
         """
 
@@ -481,10 +481,16 @@ class Firm(CRAB_Agent):
         self.size = 0
 
         # -- CAPITAL GOODS MARKET ATTRIBUTES -- #
-        self.wage = wage if wage else model.RNGs[type(self)].normal(WAGE_DIST[0],
-                                                                    WAGE_DIST[1])
         self.prod = prod if prod else model.RNGs[type(self)].normal(PROD_DIST[0],
                                                                     PROD_DIST[1])
+        self.wage = wage if wage else model.RNGs[type(self)].normal(WAGE_DIST[0],
+                                                                    WAGE_DIST[1])
+
+        self.supplier = supplier
+        # If supplier given, also set offers and connect firm to supplier
+        if self.supplier:
+            self.offers = {supplier: supplier.brochure}
+            supplier.clients.append(self)
         self.capital_vintage = [self.Vintage(self, self.prod, init_cap_amount)
                                 for _ in range(init_n_machines)]
         self.price = price if price else self.wage/self.prod
@@ -511,12 +517,12 @@ class Firm(CRAB_Agent):
 
             Args:
                 prod                : Machine productivity
-                amount              : Number of machines in this vintage.
+                amount              : Number of machines in this vintage
             """
             self.prod = prod
             self.amount = amount
             self.age = 0
-            self.lifetime = firm.model.RNGs[type(firm)].normal(20, 10)
+            self.lifetime = 15 + firm.model.RNGs[type(firm)].integers(1, 10)
 
     def damage_capital(self):
         """Apply flood damage to capital. """
@@ -581,11 +587,12 @@ class Firm(CRAB_Agent):
         if len(self.past_demand) > 2:
             # Remove oldest record from history
             self.past_demand.popleft()
-        self.past_demand.append(self.real_demand)
+        self.past_demand.append(self.real_demand)        
+        expected_demand = self.real_demand
 
-        expected_demand = np.mean(self.past_demand)
         # Get desired level of inventories
         des_inv_level = inv_frac * expected_demand
+        
         # Get desired production from inventory levels and demand
         desired_prod = max(0, expected_demand + des_inv_level - self.inventories)
         # Bound desired production to maximum production
@@ -595,10 +602,13 @@ class Firm(CRAB_Agent):
 
         # If capital stock is too low: expand firm (buy more capital)
         if self.feasible_production < desired_prod:
-            n_expansion = (round(desired_prod - self.feasible_production) *
-                           self.cap_out_ratio)
+            n_expansion = np.floor(round(desired_prod - self.feasible_production) *
+                                   self.cap_out_ratio)
         else:
             n_expansion = 0
+
+        # Save for datacollection
+        self.n_expansion = n_expansion
         return n_expansion
 
     def replace_capital(self) -> int:
@@ -626,10 +636,13 @@ class Firm(CRAB_Agent):
         n_replacements = 0
         for vintage in self.capital_vintage:
             # Compute unit cost advantage (UCA) of new machines
-            UCA = self.wage / vintage.prod - self.wage / new_prod
+            UCA = self.wage/vintage.prod - self.wage/new_prod
             # Compute payback, only replace if advantage is high enough
             if UCA > 0 and new_price / UCA <= 3:
                 n_replacements += vintage.amount
+
+        # Save for datacollection
+        self.n_replacements = n_replacements
         return n_replacements
 
     def place_order(self, n_expansion: int, n_replacements: int) -> int:
@@ -648,13 +661,17 @@ class Firm(CRAB_Agent):
 
         if self.offers:
             # Get productivity:price ratios
-            ratios = [brochure["prod"]/brochure["price"]
-                      for brochure in self.offers.values()]
-            # Get normalized cumulative sum of all offer ratios
-            sup_prob = np.cumsum(ratios)/np.cumsum(ratios)[-1]
-            j = bisect.bisect_right(sup_prob,
-                                    self.model.RNGs[type(self)].uniform(0, 1))
-            self.supplier = list(self.offers.keys())[j]
+            ratios = {supplier: brochure["prod"]/brochure["price"]
+                      for supplier, brochure in self.offers.items()}
+            best_supplier = max(ratios, key=ratios.get)
+            # Check difference with current ratio
+            old_ratio = self.prod/self.price
+            diff = (old_ratio - ratios[best_supplier])/old_ratio
+            # Probability to change is related to difference in prod:price ratio
+            p = max(0, 1 - np.exp(diff))
+            # Change suppplier if successful or if firm does not have supplier
+            if self.model.RNGs[type(self)].binomial(1, p) or not self.supplier:
+                self.supplier = best_supplier
 
         else:
             # No offers? Pick random capital good firm as supplier
@@ -732,8 +749,8 @@ class Firm(CRAB_Agent):
         # Find most productive machines to satisfy feasible production
         Q = 0
         machines_used = []
-        # Loop through stock backwards (latest machines are most productive)
-        for vintage in self.capital_vintage[::-1]:
+        machines = sorted(self.capital_vintage, key=lambda x: x.prod, reverse=True)
+        for vintage in machines:
             # Stop when desired amount is reached
             if Q < self.feasible_production:
                 machines_used.append(vintage)
@@ -742,6 +759,7 @@ class Firm(CRAB_Agent):
         # Get average productivity of chosen machines
         avg_prod = (sum(vintage.amount * vintage.prod for vintage in machines_used)
                     / sum(vintage.amount for vintage in machines_used))
+
         return round(avg_prod, 3)
 
     def get_labor_demand(self) -> int:
@@ -787,7 +805,6 @@ class Firm(CRAB_Agent):
             gov = self.model.governments[self.region]
             tax = systemic_tax(self.profits, self.demand_filled * self.price,
                                gov.q_sector_sales[type(self)])
-            # gov.tax_revenues += tax
             self.net_worth -= tax
 
     def hire_and_fire(self, labor_demand: int) -> None:
@@ -869,7 +886,6 @@ class CapitalFirm(Firm):
         # Initialize productivity of sold machines
         self.machine_prod = machine_prod if machine_prod else self.prod
         self.brochure = {"prod": self.machine_prod, "price": self.price}
-        self.cap_out_ratio = 1  # Capital output ratio
 
         # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
         self.offers = {}
@@ -879,22 +895,23 @@ class CapitalFirm(Firm):
         """Research and development: innovation and imitation.
         
         Args:
-            RD_frac         : Fraction of sales or net worth spent on R&D
+            RD_frac      : Fraction of sales or net worth spent on R&D
             IN_frac      : Fraction of R&D budget spent on innovation
         """
         
         # Calculate total R&D budget
-        self.RD_budget = (RD_frac * self.sales if self.sales > 0 else
-                          (RD_frac * self.net_worth if self.net_worth >= 0 else 0))
+        self.RD_budget = max( self.wage, (RD_frac * self.sales if self.sales > 0 else
+                          (RD_frac * self.net_worth if self.net_worth >= 0 else 0)))
         # Innovation and imitation
         IN_budget = IN_frac * self.RD_budget
         IM_budget = self.RD_budget - IN_budget
         # Adopt new technologies: update productivity by innovation or imitation
         self.machine_prod = round(max(self.machine_prod,
                                   self.innovate(IN_budget/self.wage),
-                                  self.imitate(IM_budget), 1), 3)
+                                  self.imitate(IM_budget/self.wage), 1), 3)
 
-    def innovate(self, IN_budget, Z=0.3, a=3, b=3, lower=-0.15, upper=0.15):
+    def innovate(self, IN_budget: float, Z: float=0.3, a: float=3, b: float=3,
+                 bounds: Tuple=(-0.05, 0.05)):
         """ Innovation process perfomed by Firm agents.
 
         Args:
@@ -902,20 +919,21 @@ class CapitalFirm(Firm):
             Z               : Budget scaling factor for innovation succes
             a               : Alpha parameter for Beta distribution
             b               : Beta parameter for Beta distribution
-            lower           : Lower bound for productivity change
-            upper           : Upper bound for productivity change
+            bounds          : Bounds for productivity change
         """
 
         # Binomial draw to determine success of innovation
         p = 1 - math.exp(-Z * IN_budget)
         if self.model.RNGs["Firms_RD"].binomial(1, p):
             # Draw change in productivity from beta distribution
-            prod_change = 1 + lower + beta.rvs(a, b) * (upper - lower)
+            prod_change = (1 + bounds[0] +
+                           self.model.RNGs["Firms_RD"].beta(a, b)
+                           * (bounds[1] - bounds[0]))
             return prod_change * self.machine_prod
         else:
             return 0
 
-    def imitate(self, IM_budget, Z=0.3):
+    def imitate(self, IM_budget: float, Z: float=0.3):
         """Imitation process performed by capital firms.
 
         Args:
@@ -955,11 +973,11 @@ class CapitalFirm(Firm):
             prod -= prod * self.damage_coef
         self.cost = self.wage / prod
 
-    def update_price(self, markup: float=0.3) -> None:
+    def update_price(self, markup: float=0.4) -> None:
       """Update firm unit price. """
       self.price = round((1 + markup) * self.cost, 3)
 
-    def advertise(self) -> list[int]:
+    def advertise(self) -> None:
         """Advertise: create new brochures, select new clients, send brochures."""
 
         # Create brochures
@@ -986,13 +1004,14 @@ class CapitalFirm(Firm):
 
         # Set new wage to current top wage in the region, bounded by minimum wage
         gov = self.model.governments[self.region]
-        self.wage = max(gov.min_wage, gov.top_wage)
+        noise = self.model.RNGs[type(self)].normal(0, 0.02)
+        self.wage = max(gov.min_wage, round(gov.top_wage + noise, 3))
 
     def accounting_orders(self) -> None:
         """Check if all orders can be satisfied, else: cancel or reduce orders. """
 
         # Check how much demand can be filled with production and inventories
-        self.production_made = max(0, round(self.size * self.prod, 2))
+        self.production_made = max(0, round(self.size * self.prod))
         stock_available = self.production_made + self.inventories
         self.demand_filled = min(stock_available, self.real_demand)
 
@@ -1002,9 +1021,18 @@ class CapitalFirm(Firm):
 
         # If demand cannot be filled: cancel or reduce orders
         if self.demand_filled < self.real_demand:
-            orders = list(self.regional_orders.items())
-            self.model.RNGs[type(self)].shuffle(orders)
+            # Get total amount to cancel
             amount_to_cancel = self.real_demand - self.demand_filled
+            # Split capital and consumption firm orders
+            cap_orders = list({k: v for k, v in self.regional_orders.items()
+                               if isinstance(k, CapitalFirm)}.items())
+            cons_orders = list({k: v for k, v in self.regional_orders.items()
+                                if not isinstance(k, CapitalFirm)}.items())
+            # Shuffle orders per firm type
+            self.model.RNGs[type(self)].shuffle(cap_orders)
+            self.model.RNGs[type(self)].shuffle(cons_orders)
+            # Set capital firms to back of the orders (to cancel) list
+            orders = cons_orders + cap_orders
 
             # Delete or reduce orders based on amount to cancel
             for order in orders:
@@ -1073,8 +1101,7 @@ class CapitalFirm(Firm):
         if n_replacements > 0 or n_expansion > 0:
             if self.net_worth > (self.size * self.wage):
                 # Order new machines for expansion and replacement
-                self.quantity_ordered = self.place_order(n_expansion,
-                                                         n_replacements)
+                self.quantity_ordered = self.place_order(n_expansion, n_replacements)
                 # Set number of machines to be replaced after expansion
                 self.machines_to_replace = max(0, self.quantity_ordered - n_expansion)
 
@@ -1244,16 +1271,18 @@ class ConsumptionFirm(Firm):
         self.production_made = 1
         self.old_prod = self.prod
 
-    def update_wage(self, b: float=0.2) -> None:
+    def update_wage(self, b: float=0.2, prod_bounds=(-0.25, 0.25)) -> None:
         """Set firm wage, based on average regional productivity
            and regional minimum wage.
 
         Args:
-            b       : Productivity scaling factor
+            b               : Productivity scaling factor
+            prod_bounds     : Own productivity change bounds
         """
 
-        # Bound wage by minimum wage (determined by government)
-        prod_diff = max(-0.25, min(0.25, (self.prod - self.old_prod)/self.old_prod))
+        # Get (bounded) productivity change
+        prod_diff = max(prod_bounds[0], min(prod_bounds[1],
+                        (self.prod - self.old_prod)/self.old_prod))
         # Regional productivity change, calculated by government
         gov = self.model.governments[self.region]
         avg_prod_diff = gov.prod_increase[type(self)]
@@ -1280,12 +1309,13 @@ class ConsumptionFirm(Firm):
                                       self.market_share_history[-2]) /
                                       self.market_share_history[-2])), 5)))
         else:
-            self.markup = 0.2
+            self.markup = 0.35
 
         # Adjust price based on new cost and markup, bounded between
         # 0.7 and 1.3 times the old price to avoid large oscillations
-        self.price = max(0.7 * self.price, min(1.3 * self.price,
-                         round((1 + self.markup) * self.cost, 8)))
+        self.price = max(0.7 * self.price,
+                         min(1.3 * self.price,
+                             round((1 + self.markup) * self.cost, 8)))
 
     def update_market_share(self, chi: float=1.0) -> float:
         """Compute firm market share from competitiveness.
@@ -1406,10 +1436,10 @@ class ConsumptionFirm(Firm):
         # Save market share history
         self.market_share_history.append(round(sum(self.market_share), 5))
 
-        # Compute real demand from regional demand, market shares and price
+        # Compute real demand from regional demand and market shares
         self.real_demand = np.round(sum([gov.regional_demands[type(self)],
                                          gov.export_demands[type(self)]] 
-                                         * self.market_share) / self.prod, 3)
+                                        * self.market_share / self.price), 3)
         # Check available stock
         self.production_made = self.size * self.prod
         stock_available = self.production_made + self.inventories
@@ -1513,7 +1543,6 @@ class Private_services(ConsumptionFirm):
         super().__init__(**kwargs)
 
 
-
 class Utilities(ConsumptionFirm):
     """Class representing a Utilities Goods firm in the CRAB model. """
 
@@ -1521,9 +1550,6 @@ class Utilities(ConsumptionFirm):
         """Initialize consumption goods firm agent. """
 
         super().__init__(**kwargs)
-
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 1.5  # Capital output ratio
 
 
 class Wholesale_Retail(ConsumptionFirm):
@@ -1533,9 +1559,5 @@ class Wholesale_Retail(ConsumptionFirm):
         """Initialize Service firm agent. """
 
         super().__init__(**kwargs)
-
-        # -- CAPITAL GOODS MARKET: DEMAND SIDE -- #
-        #self.cap_out_ratio = 2  # Capital output ratio
-
 
 # ------------------------------ #
