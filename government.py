@@ -27,7 +27,7 @@ from CRAB_agents import *
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
 DEMAND_ROW = 0              # NOTE: TESTING! Export turned off
-FRAC_CONS_IN_GOODS = 0.3
+FRAC_CONS_IN_GOODS = 0.35   # Fraction of consumption in goods (vs. services)
 FRAC_EXP = 0                # Multiplication factor for export each timestep
 FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
 
@@ -120,6 +120,8 @@ class Government(Agent):
         self.top_wage = 1
         self.avg_wage_prev = 1
         self.avg_wage = 1
+        self.avg_wage_per_sector = {}
+        self.avg_net_worth_per_sector = {}
         self.income_pp = 0
         self.unempl_subsidy = 0
 
@@ -153,13 +155,12 @@ class Government(Agent):
         # Return firm with best prod/price ratio
         return max(firm_prod_dict, key=firm_prod_dict.get, default=None)
 
-    def get_production(self, firm_type: type, bounds=(-0.25, 0.3125)) -> Tuple:
+    def get_productivity(self, firm_type: type, bounds=(-0.25, 0.3125)) -> Tuple:
         """Update average production and production increase for given sector.
         
         Args:
             firm_type       : Type of firm to update production values for
                               Options:
-                                    Firm: all sectors
                                     CapitalFirm: all capital firms
                                     ConsumptionGoodFirm: all consumption firms
                                     ServiceFirm: all service firms
@@ -169,18 +170,15 @@ class Government(Agent):
         """
 
         # Get employment, total production and old production for this sector
-        if firm_type == Firm:
-            firms = self.model.get_firms(self.region)
-        else:
-            firms = self.model.get_firms_by_type(firm_type, self.region)
+        firms = self.model.get_firms_by_type(firm_type, self.region)
         employment = sum(firm.size for firm in firms)
-        prod = sum(firm.production_made for firm in firms)
+        production = sum(firm.production_made for firm in firms)
         prod_old = max(1, self.avg_prod[firm_type])
-        # Update average production and increase in production
+        # Update average productivity and increase in productivity
         if employment > 0:
-            # Get production relative to employment
-            avg_prod = prod / employment
-            # Get relative increase in production
+            # Get productivity from production and employment
+            avg_prod = production / employment
+            # Get relative increase in productivity
             prod_increase = (avg_prod - prod_old) / prod_old
             prod_increase = max(bounds[0], min(bounds[1], prod_increase))
             return avg_prod, prod_increase
@@ -243,12 +241,20 @@ class Government(Agent):
             self.q_sector_employment[firm_type] = get_quantiles(firms, "size")
             self.q_sector_sales[firm_type] = get_quantiles(firms, "sales")
 
-        # Get regional average wages and unemployment rate
-        firms = self.model.get_firms(self.region)
+
         # Keep track of old average wage
         self.avg_wage_prev = self.avg_wage
+        # Get regional average wage
+        firms = self.model.get_firms(self.region)
         self.avg_wage = (sum(firm.wage * firm.size for firm in firms) /
                          sum(firm.size for firm in firms))
+        # Get regional average wages per sector
+        for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
+            firms = self.model.get_firms_by_type(firm_type, self.region)
+            self.avg_wage_per_sector[firm_type] = (sum(firm.wage * firm.size
+                                                       for firm in firms)/
+                                                   sum(firm.size for firm in firms))
+        # Get unemployment information
         households = self.model.get_households(self.region)
         unemployment = sum(1 for hh in households if hh.employer is None)
         self.unemployment_rate = round(max(1, unemployment) /
@@ -293,15 +299,18 @@ class Government(Agent):
     def stage7(self) -> None:
         """Seventh stage of Government step function. """
 
-        # Update average production (and increase) of all firms and for all sectors
+        # Update average productivity (and increase) for all sectors
         for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
-            production = self.get_production(firm_type)
-            self.avg_prod[firm_type] = production[0]
-            self.prod_increase[firm_type] = production[1]
+            prod = self.get_productivity(firm_type)
+            self.avg_prod[firm_type] = prod[0]
+            self.prod_increase[firm_type] = prod[1]
 
-        # Update average net worth
-        firms = self.model.get_firms(self.region)
-        self.avg_net_worth = sum(firm.net_worth for firm in firms) / (len(firms)+1)
+        # Update average net worth per sector
+        for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
+            firms = self.model.get_firms_by_type(firm_type, self.region)
+            self.avg_net_worth_per_sector[firm_type] = (sum(firm.net_worth
+                                                            for firm in firms)/
+                                                        len(firms)+1)
 
     def stage8(self) -> None:
         """Eighth stage of Government step function. """
@@ -310,8 +319,11 @@ class Government(Agent):
         self.top_wage = max(firm.wage for firm in
                             self.model.get_cons_firms(self.region))
         # Get top productivity (of CapitalGood firms in previous timestep)
-        self.top_prod = max(firm.machine_prod for firm in
-                            self.model.get_firms_by_type(CapitalFirm, self.region))
+        cap_firms =  self.model.get_firms_by_type(CapitalFirm, self.region)
+        # sample 20 percent of cap_firms
+        cap_firms = self.model.RNGs[type(self)].choice(cap_firms, len(cap_firms)//5)
+        self.top_prod = max(firm.machine_prod for firm in cap_firms
+                           )
 
         # Get total capital and capital for firm subsidiaries per sector
         for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:

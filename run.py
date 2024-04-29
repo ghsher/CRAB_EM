@@ -25,8 +25,8 @@ firm_flood_depths = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
 PMT_weights = pd.read_csv("Input/PMT_weights.csv", index_col=0)
 
 # -- MODEL PARAMETERS -- #
-STEPS = 400
-N_RUNS = 5
+STEPS = 200
+N_RUNS = 1
 RANDOM_SEEDS = np.arange(0, 100, int(100/N_RUNS))
 
 
