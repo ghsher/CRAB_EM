@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from ema_workbench.analysis import lines
 
 def plot_timeseries(data, floods=None):
     """
@@ -103,3 +104,171 @@ def plot_timeseries_subplots(data, plt_height=5, title=''):
     fig.suptitle(title)
 
     plt.show()
+
+################################
+### PART 2: PLOTTING FOR EMA ###
+################################
+
+def plot_lines(
+    experiments,
+    outcomes,
+    n_steps,
+    outcomes_to_show=[],
+    experiments_to_show=None,
+    handle_floods="combine",
+    group_by=None,
+    highlight=None,
+    show_envelope=False,
+    height_per_plt=5,
+    titles={},
+    ):
+    """Takes data from ema_workbench.perform_experiments and visualizes them
+    as line plots (1 per outcome). It assumes time-series data.
+    
+    Parameters
+    ----------
+    experiments : DataFrame
+                  from ema_workbench.perform_experiments
+    outcomes : OutcomesDict
+               from ema_workbench.perform_experiments
+               assumes experiments were generated with a Model, not a ReplicatorModel
+    n_steps : int
+              the number of model steps (==length of the time-series data)
+    outcomes_to_show : list of str, optional 
+                       list of outcome names you want to plot.
+                       defaults to empty list, i.e. plot all outcomes
+    experiments_to_show : list of int, optional
+                          list of experiment indices to include as lines
+                          defaults to empty list, i.e. include all experiments
+    handle_floods : str, optional
+                    has two options: "combine" (default) or "separate"
+                    "combine" : all experiments are taken together and floods
+                                are ignored
+                    "group_by" : equivalent to group_by=flood_narratives
+                    "separate": experiments are separated by flood_narrative
+                                and each (flood, outcome) pair is plotted on
+                                its own set of axes. vertical bars are overlaid
+                                to show flood times & intensities
+    group_by : str, optional
+               name of the column in `experiments` by which to group lines
+               in a single plot. defaults to None, no grouping
+    highlight : any, optional
+                if used alongside group_by, will create just two groups of lines
+                (one grey and one highlighted). the lines to be highlighted are
+                identified by `experiments[group_by] == highlight`
+                if group_by is None, this is ignored
+    show_envelope : bool, optional
+                    shows an envelope within the lines (if group_by is not None,
+                    shows a separate envelope for each group)
+    height_per_plt : int, optional
+                     height per subplot in the figure (outcome)
+    """
+
+    # Include this to clean up the ReplicatorModel thing 
+    # new_outcomes = {}
+    # for var in outcomes:
+    #     print(var)
+    #     new_outcomes[var] = []
+    #     for a in outcomes[var]:
+    #         new_outcomes[var].append(list(a[0]))
+    #     outcomes[var] = np.array(new_outcomes[var])
+    
+    # create TIME variable
+    if 'TIME' not in outcomes:
+        outcomes['TIME'] = np.array([[i for i in range(n_steps)]])
+
+    # Treat differently based on handle_floods
+    if handle_floods == "separate":
+            assert('flood_narrative' in experiments.columns)
+            assert(group_by != 'flood_narrative')
+
+            flood_narratives = experiments['flood_narrative'].unique()
+
+            fig = axes = {}
+            for f, flood_string in enumerate(flood_narratives):
+                # Select only experiments of interest 
+                experiments_to_show = experiments[experiments['flood_narrative'] == flood_string].index
+                experiments_sub = experiments.loc[experiments_to_show, :]
+                outcomes_sub = {}
+                for k, v in outcomes.items():
+                    if k == 'TIME': 
+                        continue
+                    outcomes_sub[k] = v[experiments_to_show]
+                # Create plot titles
+                titles={}
+                for outcome in outcomes_to_show:
+                    titles[outcome] = f'{outcome} ({flood_string})'
+                fig[f], axes[f] = plot_lines(
+                    experiments_sub,
+                    outcomes_sub,
+                    n_steps,
+                    outcomes_to_show=outcomes_to_show,
+                    # experiments_to_show=experiments_to_show,
+                    handle_floods="combine",
+                    group_by=group_by,
+                    highlight=highlight,
+                    show_envelope=show_envelope,
+                    height_per_plt=height_per_plt,
+                    titles=titles
+                )
+                
+                # Add flood lines TODO
+                flood_dict = {
+                    int(flood.split(':')[0].strip()) : int(flood.split(':')[1].strip())
+                    for flood in flood_string[1:-1].split(',')
+                }
+                for o in outcomes_to_show:
+                    # Add vertical bars to represent floods
+                    for flood_time, flood_return in flood_dict.items():
+                        if flood_return == 10:
+                            axes[f][o].axvline(x=flood_time, color='r', linestyle=':', linewidth=1)
+                        elif flood_return == 100:
+                            axes[f][o].axvline(x=flood_time, color='r', linestyle='--', linewidth=1)
+                        elif flood_return == 1000:
+                            axes[f][o].axvline(x=flood_time, color='r', linestyle='-', linewidth=1)
+                        # TODO: What if it's a different intensity?
+    else: 
+        if handle_floods == "combine":
+            fig, axes = lines(
+                experiments,
+                outcomes,
+                outcomes_to_show=outcomes_to_show,
+                experiments_to_show=experiments_to_show,
+                group_by=group_by,
+                show_envelope=show_envelope,
+                titles=titles,
+            )
+        elif handle_floods == "group_by":
+            assert(group_by is None or group_by=="flood_narrative")
+            fig, axes = lines(
+                experiments,
+                outcomes,
+                outcomes_to_show=outcomes_to_show,
+                experiments_to_show=experiments_to_show,
+                group_by="flood_narrative",
+                show_envelope=show_envelope,
+                titles=titles,
+            )
+        else:
+            # TODO: proper error handling
+            print("handle_floods must be combine, group_by, or separate")
+            return
+    
+        # Make plot more readable
+        fig.set_size_inches(12, len(axes)*height_per_plt)
+        for var in axes:
+            axes[var].spines['right'].set_visible(False)
+            axes[var].spines['top'].set_visible(False)
+
+            for line in range(len(experiments)):
+                axes[var].properties()['children'][line].set(
+                    color='grey',
+                    linewidth=1,
+                    alpha=0.5
+                )
+
+        # Handle highlighting
+        # TODO
+        
+    return fig, axes
+
