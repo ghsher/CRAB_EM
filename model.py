@@ -28,11 +28,21 @@ from datacollection import model_vars, agent_vars
 
 
 # -- INITIALIZE REGION SIZES -- #
-N_REGIONS = 1                                      # Number of regions
+N_REGIONS = 1                                   # Number of regions
 REGIONS = range(N_REGIONS)
-N_HOUSEHOLDS = {REGIONS[0]: 10000}                 # Number of households per region
+N_HOUSEHOLDS = {REGIONS[0]: 10000}              # Number of households per region
+N_NEW_FIRMS = {REGIONS[0]: {C26: 1,
+                            Agriculture: 1,     # Number of firms per type per region
+                            Industry: 1,
+                            Construction: 1,
+                            Transport: 1,
+                            Utilities: 1,
+                            Private_services: 1,
+                            Public_services: 1,
+                            Wholesale_Retail: 1,
+                            }}
 N_FIRMS = {REGIONS[0]: {C26: 150,
-                        Agriculture: 100,        # Number of firms per type per region
+                        Agriculture: 100,       # Number of firms per type per region
                         Industry: 300,
                         Construction: 200,
                         Transport: 150,
@@ -44,44 +54,53 @@ N_FIRMS = {REGIONS[0]: {C26: 150,
 
 # -- FIRM INITIALIZATION ATTRIBUTES -- #
 INIT_NET_WORTH = {C26: 100,
-                Agriculture: 50,
-                Industry: 50,
-                Construction: 30,
-                Transport: 25,
-                Utilities: 20,
-                Private_services: 20,
-                Public_services: 20,
-                Wholesale_Retail: 20}
+                  Agriculture: 50,
+                  Industry: 50,
+                  Construction: 30,
+                  Transport: 25,
+                  Utilities: 20,
+                  Private_services: 20,
+                  Public_services: 20,
+                  Wholesale_Retail: 20}
 
 INIT_CAP_AMOUNT = {C26: 4,
-                    Agriculture: 2,
-                    Industry: 2,
-                    Construction: 2,
-                    Transport: 2,
-                    Utilities: 2,
-                    Private_services: 2,
-                    Public_services: 2,
-                    Wholesale_Retail: 2}
+                   Agriculture: 2,
+                   Industry: 2,
+                   Construction: 2,
+                   Transport: 2,
+                   Utilities: 2,
+                   Private_services: 2,
+                   Public_services: 2,
+                   Wholesale_Retail: 2}
 
-INIT_N_MACHINES = { C26: 20,  
-                    Agriculture: 10,       # Initial number of machines
-                    Industry: 15,
-                    Construction: 10,
-                    Transport: 10,
-                    Utilities: 10,
-                    Private_services: 10,
-                    Public_services: 10,
-                    Wholesale_Retail: 10}
+INIT_N_MACHINES = {C26: 20,  
+                   Agriculture: 10,             # Initial number of machines
+                   Industry: 15,
+                   Construction: 10,
+                   Transport: 10,
+                   Utilities: 10,
+                   Private_services: 10,
+                   Public_services: 10,
+                   Wholesale_Retail: 10}
 
-INIT_KL_RATIO = {   C26: 2,  
-                    Agriculture: 1.4,           # Initial capital-labor ratio
-                    Industry: 1.5,
-                    Construction: 1.1,
-                    Transport: 1.4,
-                    Utilities: 1.5,
-                    Private_services: 1.2,
-                    Public_services: 1,
-                    Wholesale_Retail: 1}
+INIT_KL_RATIO = {C26: 2,  
+                 Agriculture: 1.4,           # Initial capital-labor ratio
+                 Industry: 1.5,
+                 Construction: 1.1,
+                 Transport: 1.4,
+                 Utilities: 1.5,
+                 Private_services: 1.2,
+                 Public_services: 1,
+                 Wholesale_Retail: 1}
+# INIT_MK  = {C26: 0.25,  
+#             Agriculture : 0.25,               # Initial markup
+#             Industry: 0.25,
+#             Construction: 0.25,
+#             Transport: 0.25,
+#             Utilities: 0.25,
+#             Private_services: 0.25,
+#             Public_services: 0.25,
+#             Wholesale_Retail: 0.25}
 
 # -- ADAPTATION ATTRIBUTES -- #
 AVG_HH_CONNECTIONS = 7
@@ -135,6 +154,7 @@ class CRAB_Model(Model):
 
         # -- FLOOD and ADAPTATION ATTRIBUTES -- #
         self.flood_when = flood_when
+        self.firm_flood_depths = firm_flood_depths
         self.CCA = CCA
         if self.CCA:
             self.social_net = social_net
@@ -162,9 +182,9 @@ class CRAB_Model(Model):
                 self.firms[region][firm_type] = []
                 # Take random subsample from synthetic population
                 idx = self.RNGs[firm_type].choice(firm_flood_depths.index, N)
-                for _, flood_depths in firm_flood_depths.loc[idx].iterrows():
+                for _, flood_depth_row in firm_flood_depths.loc[idx].iterrows():
                     flood_depths = {int(RP.lstrip("Flood depth RP")): depth
-                                    for RP, depth in flood_depths.items()}
+                                    for RP, depth in flood_depth_row.items()}
                     self.add_firm(firm_type, region=region,
                                   flood_depths=flood_depths,
                                   market_share=1/N_FIRMS[region][firm_type],
@@ -182,8 +202,8 @@ class CRAB_Model(Model):
                                               N_HOUSEHOLDS[region])
             for _, attributes in HH_attributes.loc[idx].iterrows():
                 self.add_household(region, attributes)
-            # -- SOCIAL NETWORK -- #
 
+            # -- SOCIAL NETWORK -- #
             self.G = nx.watts_strogatz_graph(n=N_HOUSEHOLDS[region],
                                              k=AVG_HH_CONNECTIONS, p=0)
             # Relabel nodes for consistency with agent IDs
@@ -244,67 +264,70 @@ class CRAB_Model(Model):
         self.schedule.add(firm)
         return firm
 
-    def add_subsidiary(self, firm: Type[Firm]) -> None:
+    def create_new_firm(self, firm_type: type, region: int) -> None:
         """Create subsidiary of given firm.
 
         Args:
-            firm        : Firm object to create subsidiary of
+            firm_type       : Firm class
+            region          : Region to create new firm in
         """
-        gov = self.governments[firm.region]
+        gov = self.governments[region]
+        cap_firms = self.get_firms_by_type(C26, region)
 
-        # Initialize net worth as fraction of average net worth
-        fraction_wealth = (0.9 - 0.1) * self.RNGs[type(firm)].uniform() + 0.1
-        net_worth = max(gov.avg_net_worth, 1) * fraction_wealth
+        # Initialize net worth at (bounded) average net worth
+        net_worth = (max(50, round(gov.avg_net_worth_per_sector[firm_type], 4)))
         # Get capital amount for new firms from government
-        capital_amount = round(gov.capital_new_firm[type(firm)] * firm.cap_out_ratio)
-        markup = self.init_markup[type(firm)]
+        capital_amount = round(gov.capital_new_firm[firm_type] * INIT_KL_RATIO[firm_type])
+        markup = self.init_markup[firm_type]
+
         # Initialize new supplier randomly
-        suppliers = self.get_firms_by_type(C26, firm.region)
-        supplier = self.RNGs[type(firm)].choice(suppliers)
+        suppliers = self.get_firms_by_type(C26, region)
+        supplier = self.RNGs[firm_type].choice(suppliers)
+        prod = supplier.brochure["prod"]
+
+        # Initialize random flood depth (from properties file)
+        idx = self.RNGs[firm_type].choice(self.firm_flood_depths.index)
+        flood_depths = {int(RP.lstrip("Flood depth RP")): depth
+                        for RP, depth in self.firm_flood_depths.loc[idx].items()}
         
-        if isinstance(firm, CapitalFirm):
-            # Initialize productivity as fraction of regional top productivity
-            x_low, x_up, a, b = (-0.075, 0.075, 2, 4)
-            fraction_prod = 1 + x_low + self.RNGs[type(firm)].beta(a, b) * (x_up - x_low)
-            machine_prod = np.around(gov.top_prod[type(firm)] * fraction_prod, 3)
-            # Get brochure from best capital firm of same type
-            brochure = gov.best_cap[type(firm)].brochure
-            prod = brochure["prod"]
+        # Set wage to sectoral average (+ noise)
+        noise = self.RNGs[firm_type].normal(0, 0.02)
+        wage = round(gov.avg_wage_per_sector[firm_type] + noise, 3)
+        
+        if firm_type == C26:
+            # Initialize (sold) machines prod as current regional best
+            machine_prod = gov.top_prod
+            # Draw a change in productivity from a beta distribution
+            bounds = (-0.1, 0.05)
+            prod_change = (1 + bounds[0] +
+                           self.RNGs["Firms_RD"].beta(2, 4) * (bounds[1]-bounds[0]))
+            machine_prod *= prod_change
+
             # Initialize market share as fraction of total at beginning
-            market_share = 1 / N_FIRMS[firm.region][type(firm)]
+            market_share = 1 / N_FIRMS[region][firm_type]
             # Create new firm
-            sub = type(firm)(model=self, region=firm.region,
-                             flood_depths=firm.flood_depths,
+            sub = firm_type(model=self, region=region, flood_depths=flood_depths,
                              market_share=market_share, net_worth=net_worth,
                              init_n_machines=1, init_cap_amount=capital_amount,
-                             markup = markup, cap_out_ratio=firm.cap_out_ratio,
-                             sales=capital_amount, wage=firm.wage, price=firm.price,
-                             prod=prod, machine_prod=machine_prod, lifetime=0)
-        elif isinstance(firm, ConsumptionFirm):
-            prod = supplier.brochure["prod"]
-            # Create new firm
-            sub = type(firm)(model=self, region=firm.region,
-                             flood_depths=firm.flood_depths, market_share=0,
-                             init_n_machines=1, init_cap_amount=capital_amount,
-                             net_worth=net_worth, markup=markup,
-                             cap_out_ratio=firm.cap_out_ratio,
-                             sales=0, wage=firm.wage, price=firm.price, prod=prod,
-                             lifetime=0)
-            # Initialze competitiveness from regional average
-            sub.competitiveness = gov.avg_comp_norm[type(firm)]
+                             markup=markup, cap_out_ratio=INIT_KL_RATIO[firm_type],
+                             supplier=supplier, sales=capital_amount, prod=prod,
+                             wage=wage, machine_prod=machine_prod, lifetime=0)
         else:
-            raise ValueError("Firm type not recognized in function add_subsidiary().")
-
-        # Set supplier to best regional capital firm
-        sub.supplier = supplier
-        sub.offers = {sub.supplier: sub.supplier.brochure}
-        sub.supplier.clients.append(sub)
+            # Create new firm
+            sub = firm_type(model=self, region=region, flood_depths=flood_depths,
+                             market_share=0, init_n_machines=1,
+                             init_cap_amount=capital_amount,
+                             cap_out_ratio=INIT_KL_RATIO[firm_type],
+                             supplier=supplier, net_worth=net_worth, markup=markup,
+                             sales=0, wage=wage, prod=prod, lifetime=0)
+            # Initialze competitiveness from regional average
+            sub.competitiveness = gov.avg_comp_norm[firm_type]
 
         # Add subsidiary to firms list and schedule
         self.firms[sub.region][type(sub)].append(sub)
         self.schedule.add(sub)
 
-        gov.new_firms_resources += gov.avg_net_worth
+        gov.new_firms_resources += net_worth
         return sub
 
     def remove_firm(self, firm: Type[Firm]) -> None:
@@ -359,65 +382,6 @@ class CRAB_Model(Model):
         """
         return self.firms[region][firm_type]
     
-    '''
-    def get_firms_by_buyer(self, firm_type: type, region: int):
-        """Return all firms of specified type and region.
-
-        Args:
-            region          : Region where firms are located
-            type            : Firm type to select
-        Returns:
-            firms           : List of selected firms
-
-        """
-        if firm_type == C26:
-            buyers = self.get_cons_firms(region)
-        elif firm_type == C27:
-            buyers = [Industry]
-        elif firm_type == C28:
-            buyers = [Industry, Construction]
-        elif firm_type == C29:
-            buyers = [Construction, Transport]
-        elif firm_type == C30:
-            buyers = [Transport]
-        
-        firms = []
-        for buyer in buyers:
-            firms += self.firms[region][buyer]
-        
-        return firms
-
-    def get_firms_by_supplier(self, firm_type: type, region: int):
-        """Return all firms of specified type and region.
-
-        Args:
-            region          : Region where firms are located
-            type            : Firm type to select
-        Returns:
-            firms           : List of selected firms
-        """
-        if firm_type == Business_services:
-            suppliers = [C26, C28]
-        elif firm_type == Industry:
-            suppliers = [C27, C28]
-        elif firm_type == Construction:
-            suppliers = [C28, C29]
-        elif firm_type == Transport:
-            suppliers = [C29, C30]
-        elif firm_type == Information:
-            suppliers = [C27]
-        elif firm_type == Finance:
-            suppliers = [C26]
-        else:
-            suppliers = [C28]  
-       
-        firms = []
-        for supplier in suppliers:
-            firms += self.firms[region][supplier]
-        
-        return firms
-    '''
-    
     def get_households(self, region: int):
         """Return list of all households in this region.
 
@@ -430,29 +394,6 @@ class CRAB_Model(Model):
 
     def step(self) -> None:
         """Defines a single model step in the CRAB model. """
-
-
-        # -- Get data to upddate form CGE model -- #
-        '''
-        if self.schedule.time % 4 == 0:
-            KL_RATIO  =  pd.read_csv("KL_ratio.csv")
-            KL_RATIO.set_index("Industry", inplace=True)
-            KL_RATIO = KL_RATIO.to_dict()["KL_ratio"]
-            # we need to convert the keys to the class type 
-            for class_name, new_value in KL_RATIO.items():
-                class_obj = globals()[class_name]
-                INIT_KL_RATIO[class_obj] = new_value
-            
-            # -- Update firms' capital-labor ratio -- #
-            for region in REGIONS:
-                for firm_type in N_FIRMS[region].keys():
-                    for firm in self.firms[region][firm_type]:
-                        firm.cap_out_ratio = INIT_KL_RATIO[firm_type]
-        '''
-
-        
-
-    
 
         # -- FLOOD SHOCK -- #
         if self.schedule.time in self.flood_when.keys():
@@ -467,20 +408,24 @@ class CRAB_Model(Model):
 
         # -- REMOVE BANKRUPT FIRMS -- #
         for region in REGIONS:
+            # Remove bankrupt firms
             for firm in self.firms_to_remove[region]:
                 self.remove_firm(firm)
-                # Create new firms as subsidiaries of bankrupt firms
-                firm_type = type(firm)
-                new_firm = self.add_subsidiary(firm)
+
+            # Create new firms
+            for firm_type in N_FIRMS[region].keys():
+                # n_new_firms = abs(round(self.RNGs[firm_type].normal(2, 1)))
+                N = self.RNGs[firm_type].poisson(lam=N_NEW_FIRMS[region][firm_type])
+                for _ in range(N):
+                    self.create_new_firm(firm_type, region)
+
             self.governments[region].bailout_cost = 0
             self.governments[region].new_firms_resources = 0
 
-            # TODO: put back here
-            # self.firms_to_remove[region] = []
-
         # -- OUTPUT COLLECTION -- #
-        self.datacollector.collect(self)
+        # Extract output data every 4 timesteps (= every year)
+        if self.schedule.steps % 4 == 0:
+            self.datacollector.collect(self)
 
-        # TODO: put back above
         for region in REGIONS:
             self.firms_to_remove[region] = []
