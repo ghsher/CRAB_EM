@@ -2,3 +2,5 @@ __pycache__/
 
 archive/
 results/
+
+*_test.ipynb
