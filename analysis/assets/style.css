@@ -1,0 +1,83 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+    margin: 0;
+    background-color: #f7f7f7;
+}
+
+/* Header */
+.header {
+    background-color: #222222;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.header-title {
+    color: #FFFFFF;
+    font-size: 48px;
+    font-weight: bold;
+    text-align: center;
+    margin: 0 auto;
+}
+
+.header-sub {
+    color: #CFCFCF;
+    margin: 0 auto;
+    text-align: center;
+}
+
+/* Body */
+.row {
+    display: flex;
+}
+
+.col {
+    border: black solid 1px;
+}
+
+.side {
+    font-size: 14px;
+    padding-left: 6px;
+    flex: 20%;
+    text-align: left;
+}
+
+.middle {
+    flex: 60%;
+}
+
+/* Text */
+.subtitle {
+    margin-bottom: 8px;
+}
+.subsubtitle {
+    margin-top: 8px;
+    margin-bottom: 6px;
+}
+
+/* Other */
+.rc-slider-tooltip-content {
+    background: none;
+}
+.rc-slider-tooltip-inner {
+    background: none;
+}
+#color-param-wrapper {
+    margin-top: 10px;
+}
+
+/* Graph cards */
+.card {
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px 0 rgba(0, 0, 0, 0.18);
+}
+.wrapper {
+    padding: 10px 10px 0 10px;
+}
+
+/* Clear floats after the columns 
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+}*/

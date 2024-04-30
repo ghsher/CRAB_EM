@@ -216,8 +216,8 @@ model.outcomes = outcomes
 #        until you fix the PFF problem
 with SequentialEvaluator(model) as evaluator:
     results = evaluator.perform_experiments(
-        scenarios=1,
+        scenarios=100,
         uncertainty_sampling=Samplers.LHS
     )
     
-save_results(results, "results/0409_single_run.tar.gz")
+save_results(results, "results/0409_100_runs.tar.gz")
