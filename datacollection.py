@@ -70,6 +70,7 @@ model_vars = {# -- FLOOD -- #
 			  }
 
 agent_vars = {# -- ALL AGENTS ATTRIBUTES -- #
+			  "Region": "region",
 			  "Type":
 			  		lambda a: type(a),
 			  "Net worth":

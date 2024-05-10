@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Type
 if TYPE_CHECKING:
     from model import CRAB_Model
 
+from collections import deque
+
 from mesa import Agent
 
 from CRAB_agents import *
@@ -26,10 +28,10 @@ from CRAB_agents import *
 # -- MODEL CONSTANTS -- #
 TRANSPORT_COST = 0.03
 TRANSPORT_COST_RoW = 2 * TRANSPORT_COST
-DEMAND_ROW = 0              # NOTE: TESTING! Export turned off
+DEMAND_ROW = 300
 FRAC_CONS_IN_GOODS = 0.35   # Fraction of consumption in goods (vs. services)
-FRAC_EXP = 0                # Multiplication factor for export each timestep
-FRAC_EXP_INIT = 0           # Fraction of regional consumption for initial export d
+FRAC_EXP = 0.01             # Multiplication factor for export each timestep
+FRAC_EXP_INIT = 0.15        # Fraction of regional consumption for initial export d
 
 
 # -- HELPER FUNCTIONS -- #
@@ -116,6 +118,7 @@ class Government(Agent):
         self.transport_cost_RoW = TRANSPORT_COST_RoW
 
         # -- LABOR MARKET ATTRIBUTES -- #
+        self.unemployment_rate = 1
         self.min_wage = 1
         self.top_wage = 1
         self.avg_wage_prev = 1
@@ -123,6 +126,8 @@ class Government(Agent):
         self.avg_wage_per_sector = {}
         self.avg_net_worth_per_sector = {}
         self.income_pp = 0
+        self.prev_income_pp = 0
+        self.yearly_income_pp_change = deque(maxlen=4)
         self.unempl_subsidy = 0
 
         # -- FLOOD-RELATED ATTRIBUTES -- #
@@ -233,7 +238,6 @@ class Government(Agent):
             if firm_type != CapitalFirm:
                 self.comp_norm[firm_type] = normalize(firms, "competitiveness",
                                                       convert_to_pos=True)
-
                 comp_norm_list = list(self.comp_norm[firm_type].values())
                 self.avg_comp_norm[firm_type] = weighted_avg(firms, comp_norm_list)
 
@@ -241,13 +245,12 @@ class Government(Agent):
             self.q_sector_employment[firm_type] = get_quantiles(firms, "size")
             self.q_sector_sales[firm_type] = get_quantiles(firms, "sales")
 
-
         # Keep track of old average wage
         self.avg_wage_prev = self.avg_wage
         # Get regional average wage
         firms = self.model.get_firms(self.region)
-        self.avg_wage = (sum(firm.wage * firm.size for firm in firms) /
-                         sum(firm.size for firm in firms))
+        self.avg_wage = round(sum(firm.wage * firm.size for firm in firms) /
+                              sum(firm.size for firm in firms), 2)
         # Get regional average wages per sector
         for firm_type in [CapitalFirm, ConsumptionGoodFirm, ServiceFirm]:
             firms = self.model.get_firms_by_type(firm_type, self.region)
@@ -267,6 +270,18 @@ class Government(Agent):
             print("More resources than consumption")
         total_consumption += entry_exit_resources
         
+        # Update income for use in determining migration
+        self.prev_income_pp = self.income_pp
+        total_hh_net_worth = sum(hh.net_worth + hh.house_value - hh.monetary_damage
+                                 for hh in households)
+        self.income_pp = round(np.log(total_consumption + total_hh_net_worth) -
+                               np.log(len(households)), 3)
+        if self.prev_income_pp != 0:
+            income_pp_change = (self.income_pp - self.prev_income_pp)
+            income_pp_change /= abs(self.prev_income_pp)
+            income_pp_change = max(-0.2, min(0.2, income_pp_change))
+            self.yearly_income_pp_change.append(income_pp_change)
+
         # Update export demand
         if self.model.schedule.time > 10:
             self.demand_RoW = self.demand_RoW * (1 + FRAC_EXP)

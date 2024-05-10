@@ -35,7 +35,7 @@ for n, seed in enumerate(RANDOM_SEEDS):
 
 	# -- INITIALIZE MODEL -- #
 	model = CRAB_Model(seed, HH_attributes, firm_flood_depths, PMT_weights,
-					   firms_RD=True,
+					   firms_RD=True, migration={"Regional": False, "RoW": True},
 					   flood_when={},
 					   CCA=False,
 					   social_net=False)

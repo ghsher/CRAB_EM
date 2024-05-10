@@ -385,7 +385,8 @@ class Household(CRAB_Agent):
 
             # Get household social network for opinion dynamics
             if self.model.social_net:
-                neighbor_nodes = list(self.model.G.neighbors(self.unique_id))
+                social_net = self.model.social_networks[self.region]
+                neighbor_nodes = list(social_net.neighbors(self.unique_id))
                 households = self.model.get_households(self.region)
                 social_network = [self.model.schedule._agents[node]
                                   for node in neighbor_nodes]
@@ -1198,7 +1199,7 @@ class ConsumptionFirm(Firm):
         self.supplier.clients.append(self)
 
         # -- INITIAL MARKET PARAMETERS -- #
-        self.competitiveness = np.repeat(competitiveness, self.model.n_regions+1)
+        self.competitiveness = np.repeat(competitiveness, self.model.n_regions + 1)
         self.production_made = 1
         self.old_prod = self.prod
 
@@ -1259,7 +1260,8 @@ class ConsumptionFirm(Firm):
             cap_amount = sum(vintage.amount for vintage in self.capital_vintage)
             cap_stock = cap_amount / self.cap_out_ratio
             cap_regional = self.model.governments[self.region].total_capital
-            MS = np.repeat(max(cap_stock/cap_regional[type(self)], 1e-4), 2)
+            MS = np.repeat(max(cap_stock/cap_regional[type(self)], 1e-4),
+                           self.model.n_regions + 1)
         else:
             # Compute new market share from competitiveness
             avg_comp = self.model.governments[self.region].avg_comp_norm[type(self)]
@@ -1367,10 +1369,12 @@ class ConsumptionFirm(Firm):
         # Save market share history
         self.market_share_history.append(round(sum(self.market_share), 5))
 
-        # Compute real demand from regional demand and market shares
-        self.real_demand = np.round(sum([gov.regional_demands[type(self)],
-                                         gov.export_demands[type(self)]] 
-                                        * self.market_share / self.price), 3)
+        # Compute real demand from regional demand(s), export demand and market shares
+        demands = [regional_gov.regional_demands[type(self)]
+                   for regional_gov in self.model.governments.values()]
+        demands += [gov.export_demands[type(self)]]
+        self.real_demand = np.round(sum(demands * self.market_share / self.price), 3)
+
         # Check available stock
         self.production_made = self.size * self.prod
         stock_available = self.production_made + self.inventories
