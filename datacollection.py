@@ -48,25 +48,34 @@ model_vars = {# -- FLOOD -- #
 			  					  if type(firm) == ServiceFirm),
 
 			  # -- HOUSEHOLD ATTRIBUTES -- #
-			  # "Total HH consumption":
-			  # 		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
-			  # "Total HH net worth":
-			  # 		lambda m: sum(hh.net_worth for hh in m.get_households(REGION)),
-			  # "Total flood damage":
-			  #  		lambda m: sum(hh.monetary_damage
-			  #  					  for hh in m.get_households(REGION)),
-  			  # "Adaptation: elevation":
-			  # 		lambda m: sum(bool(hh.adaptation["Elevation"])
-			  # 					  for hh in m.get_households(REGION)) /
-			  # 					  len(m.get_households(REGION)),
-			  # "Adaptation: dry-proofing":
-			  # 		lambda m: sum(bool(hh.adaptation["Wet_proof"])
-			  # 					  for hh in m.get_households(REGION)) /
-			  # 					  len(m.get_households(REGION)),
-			  # "Adaptation: wet-proofing":
-			  # 		lambda m: sum(bool(hh.adaptation["Dry_proof"])
-			  # 					  for hh in m.get_households(REGION)) /
-			  # 					  len(m.get_households(REGION)),
+			  "Total HH consumption":
+			  		lambda m: sum(hh.consumption for hh in m.get_households(REGION)),
+			  "Total HH net worth":
+			  		lambda m: sum(hh.net_worth for hh in m.get_households(REGION)),
+			  "Total HH flood damage":
+			   		lambda m: sum(hh.monetary_damage
+			   					  for hh in m.get_households(REGION)),
+			  "Total damage repair costs":
+			  		lambda m: m.governments[REGION].total_repair_expenses,
+			  "Total adaptation costs":
+			  		lambda m: m.governments[REGION].total_cca_investment,
+
+  			  "Adaptation: elevation":
+			  		lambda m: sum(bool(hh.adaptation["Elevation"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
+			  "Adaptation: dry-proofing":
+			  		lambda m: sum(bool(hh.adaptation["Wet_proof"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
+			  "Adaptation: wet-proofing":
+			  		lambda m: sum(bool(hh.adaptation["Dry_proof"])
+			  					  for hh in m.get_households(REGION)) /
+			  					  len(m.get_households(REGION)),
+		       "Adaptation: firms":
+			  		lambda m: sum(bool(firm.adaptation["Dry_proof"])
+			  					  for firm in m.get_firms(REGION)) /
+			  					  len(m.get_firms(REGION)),
 			  }
 
 agent_vars = {# -- ALL AGENTS ATTRIBUTES -- #

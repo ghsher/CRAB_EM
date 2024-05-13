@@ -14,7 +14,6 @@ There are three types of Firms: CapitalFirms, and two types of ConsumptionFirms:
 ConsumptionGoodFirms and ServiceFirms.
 The CapitalFirms supply machines to other CapitalFirms and to ConsumptionFirms,
 which they use to provide goods and services to households for consumption.
-
 """
 
 # -- PACKAGES FOR TYPE CHECKING -- #
@@ -49,6 +48,7 @@ DAMAGE_CURVES = {"Residential":
 DAMAGE_REDUCTION = {"Elevation": 3, "Dry_proof": 0.4, "Wet_proof": 0.5}
 # -- ADAPTATION CONSTANTS -- #
 CCA_COSTS = {"Elevation": 2, "Dry_proof": 0.5, "Wet_proof": 1}
+FIRM_CCA_EFFICACY = 0.85
 
 
 def systemic_tax(profits: list, sales: float, quintiles: list,
@@ -92,6 +92,16 @@ def depth_to_damage(building_type: str, flood_depth: float) -> float:
     # Interpolate between known datapoints
     damage_coef = np.interp(flood_depth, depths, damages)
     return damage_coef
+
+
+def cost_of_dry_proofing(area: int) -> float:
+    """Function to calculate the cost of dry-proofing based on the area.
+       Values based on 10.1088/1748-9326/ab0770 (supplementary information)
+    
+    Args:
+        area        : Property area
+    """
+    return (165.71/4000) * ((5.296/4000) * area**0.736)
 
 
 class CRAB_Agent(Agent):
@@ -157,6 +167,7 @@ class Household(CRAB_Agent):
         self.repair_expenses = 0
         self.adaptation_costs = 0
         self.measure_to_impl = None
+
         # -- Adaptation attributes -- #
         self.perc_damage = HH_attributes["Flood damage"]
         self.perc_prob = HH_attributes["Flood probability"]
@@ -277,7 +288,6 @@ class Household(CRAB_Agent):
                      self.flood_experience,
                      self.social_exp,
                      n_others_adapted,
-                     n_others_adapted * self.social_exp,
                      other_measure_1,
                      other_measure_2]
         # Get weighted average of attributes
@@ -310,13 +320,15 @@ class Household(CRAB_Agent):
         # Spend costs and keep track of expenses by government
         gov = self.model.governments[self.region]
         self.net_worth -= self.adaptation_costs
-        gov.total_repair_expenses += self.adaptation_costs
+        gov.total_cca_investment += self.adaptation_costs
         # Implement measure (for elevation: set equal to new height)
         self.adaptation[measure] = (DAMAGE_REDUCTION["Elevation"]
                                     if measure == "Elevation" else 1)
         # Adjust perceived damage with response efficacy
         resp_eff = self.CCA_perc[self.measure_to_impl]["Response efficacy"]
-        self.perc_damage = (self.perc_damage * resp_eff)
+        # Save previous perceived damage (for when dry-proofing is not effective anymore)
+        self.old_perc_damage = self.perc_damage
+        self.perc_damage = self.perc_damage * resp_eff
         # Reset adaptation implementation variables
         self.adaptation_costs = 0
         self.measure_to_impl = None
@@ -381,7 +393,7 @@ class Household(CRAB_Agent):
             self.repair_expenses = 0
 
         # -- Adaptation -- #
-        if (self.model.CCA and np.any(list(self.flood_depths.values()))):
+        if (self.model.CCA["Households"] and np.any(list(self.flood_depths.values()))):
 
             # Get household social network for opinion dynamics
             if self.model.social_net:
@@ -424,9 +436,8 @@ class Household(CRAB_Agent):
                         # Dry-proofing only lasts 20 years, remove if older
                         if self.adaptation["Dry_proof"] >= 80:
                             self.adaptation["Dry_proof"] = 0
-                            # Adjust perceived damage
-                            resp_eff = self.CCA_perc["Dry_proof"]["Response efficacy"]
-                            self.perc_damage = (self.perc_damage / resp_eff)
+                            # Adjust perceived damage back to before dry-proofing
+                            self.perc_damage = self.old_perc_damage
 
     def stage6(self) -> None:
         pass
@@ -442,7 +453,8 @@ class Household(CRAB_Agent):
 class Firm(CRAB_Agent):
     """Class representing a firm in the CRAB model. """
 
-    def __init__(self, model: CRAB_Model, region: int, flood_depths: dict,
+    def __init__(self, model: CRAB_Model, region: int,
+                 flood_depths: dict, area: float, property_value: float,
                  market_share: float, net_worth: int,
                  init_n_machines: int, init_cap_amount: int,
                  cap_out_ratio: float, supplier: Type[Firm]=None,
@@ -454,6 +466,8 @@ class Firm(CRAB_Agent):
             model               : Model object containing the firm
             region              : Home region of this firm
             flood_depths        : Firm building flood depths per flood return period
+            area                : Firm building area (in square meter)
+            property_value      : Value of firm building
             market_share        : Initial market share
             net_worth           : Initial net worth
             init_n_machines     : Initial number of machines
@@ -508,6 +522,12 @@ class Firm(CRAB_Agent):
         self.market_share = np.repeat(market_share, self.model.n_regions + 1)
         self.market_share_history = deque([])
 
+        # -- Adaptation attributes -- #
+        self.area = area
+        self.property_value = property_value
+        self.adaptation = {"Dry_proof": 0}
+        self.adaptation_costs = 0
+
     class Vintage:
         """Class representing a vintage that consists of multiple
            machines of the same age, lifetime and productivity. """
@@ -524,6 +544,71 @@ class Firm(CRAB_Agent):
             self.age = 0
             self.lifetime = 15 + firm.model.RNGs[type(firm)].integers(1, 10)
 
+    def calculate_NPV(self, strategy: str, depth: float, wealth: float,
+                      damage: float, cost: float, T: int, r: float,
+                      g: float=0.04) -> float:
+        """Calculate net present value (NPV) for a given strategy.
+
+        Args:
+            depth       : Flood depth
+            wealth      : Current property value
+            damage      : Damage for given flood depth
+            cost        : Cost of given strategy
+            T           : Time horizon
+            r           : Period rate
+            g           : Expected yearly accumulated gain in wealth
+        """
+
+        # Get initial costs of given strategy (cost = 0 for doing nothing)
+        npv = -cost if strategy == "dry_proofing" else 0
+        # Dry-proofing is effective only up to 1.5 meters
+        efficacy = FIRM_CCA_EFFICACY if depth < 1.5 else 0
+        # Calculate discounted expected utility for given time horizon
+        for t in range(1, T+1):
+            wealth *= (1 + g)
+            reduced_damage = (wealth - damage * (1 - efficacy)
+                              if strategy == "dry_proofing" else wealth - damage)
+            discounted_damage = reduced_damage / ((1 + r) ** t)
+            npv += discounted_damage
+        return npv
+
+    def calculate_DEU(self, T: int=30, r: float=0.03, beta: float=1.0) -> Tuple:
+        """Calculate discounted expected utility (DEU) of
+           climate change adaptation (CCA) measure (for firms: only dry-proofing).
+
+        Args:
+            T       : Time horizon
+            r       : Period rate
+            beta    : Discount factor
+        """
+
+        # Get annuity factor for given time horizon and discount factor
+        A_t_r = (1 - (1 + r)**(-T)) / r
+        # Get cost of dry proofing based on building area
+        cost = cost_of_dry_proofing(self.area)
+
+        # Calculate discounted expected utility of dry-proofing or doing nothing
+        deu_dry_proofing = 0
+        deu_no_action = 0
+        for prob, depth in self.flood_depths.items():
+            # Get damage from depth-damage curves for industrial buildings
+            damage = depth_to_damage("Industry", depth) * self.property_value
+            # Calculate net present value of dry-proofing and doing nothing
+            npv_dry_proofing = self.calculate_NPV("dry_proofing", depth,
+                                                  self.property_value, damage,
+                                                  cost=cost, T=T, r=r)
+            npv_no_action = self.calculate_NPV("do_nothing", depth,
+                                               self.property_value, damage,
+                                               cost=0, T=T, r=r)
+            # Calculate discounted utility for dry-proofing or doing nothing
+            eab_dry_proofing = npv_dry_proofing / A_t_r
+            eab_no_action = npv_no_action / A_t_r
+            deu_dry_proofing += beta * prob * np.log(eab_dry_proofing)
+            deu_no_action += beta * prob * np.log(eab_no_action)
+
+        # Return utilities and costs
+        return deu_dry_proofing, deu_no_action, cost
+
     def damage_capital(self):
         """Apply flood damage to capital. """
         vin_to_remove = []
@@ -533,6 +618,30 @@ class Firm(CRAB_Agent):
                 vin_to_remove.append(vintage)
         for vintage in vin_to_remove:
             self.capital_vintage.remove(vintage)
+
+    def implement_CCA_measure(self):
+        """Consider adaptation. For firms: only dry-proofing is considered. """
+
+        # -- CLIMATE CHANGE ADAPTATION: consider dry-proofing -- #
+        
+        # Calculate discounted expected utility of dry proofing
+        util_dry_proof, util_do_nothing, cost = self.calculate_DEU()
+
+        # Check if taking measure is preferable and affordable
+        if util_dry_proof > util_do_nothing:
+            # If enough net worth: take measure
+            if self.net_worth > cost:
+                self.adaptation["Dry_proof"] = 1
+                self.adaptation_costs = cost
+            # Else: check if can be afforded by taking on debt
+            elif self.net_worth > 0:
+                debt_affordable = self.sales * DEBT_SALES_RATIO
+                debt_required = cost - self.net_worth
+                if debt_affordable > debt_required:
+                    self.debt = debt_required
+                    self.adaptation["Dry_proof"] = 1
+                    self.credit_rationed = True
+                    self.adaptation_costs = cost
 
     def update_capital(self) -> None:
         """Update capital:
@@ -796,13 +905,37 @@ class Firm(CRAB_Agent):
         self.pre_tax_profits = profits
         return profits
 
+    def repair_damage(self):
+        """Reduce net worth to repair flood damages to property."""
+        gov = self.model.governments[self.region]
+        if self.monetary_damage > 0 and self.net_worth > 0:
+            # If affordable: repair all damage
+            if self.net_worth > self.monetary_damage:
+                self.net_worth -= self.monetary_damage
+                gov.total_repair_expenses += self.monetary_damage
+                self.monetary_damage = 0
+            # Else: repair some damage
+            else:
+                self.monetary_damage -= self.net_worth
+                gov.total_repair_expenses += self.net_worth
+                self.net_worth = 0
+
     def update_net_worth(self) -> float:
         """Compute new firm net worth from earnings this timestep. """
 
-        self.net_worth += self.profits - self.investment_cost
+        # Update net worth from profits, machine investments and adaptation costs
+        self.net_worth += self.profits - self.investment_cost - self.adaptation_costs
+
+        # In case of flood damage: reduce net worth to repair damages to property
+        self.repair_damage()
+        
+        # Spend planned adaptation costs
+        gov = self.model.governments[self.region]
+        gov.total_cca_investment += self.adaptation_costs
+        self.adaptation_costs = 0
+
         # If firm made profits: pay taxes
         if self.profits > 0:
-            gov = self.model.governments[self.region]
             tax = systemic_tax(self.profits, self.demand_filled * self.price,
                                gov.q_sector_sales[type(self)])
             self.net_worth -= tax
@@ -911,7 +1044,7 @@ class CapitalFirm(Firm):
                                   self.imitate(IM_budget/self.wage), 1), 3)
 
     def innovate(self, IN_budget: float, Z: float=0.3, a: float=3, b: float=3,
-                 bounds: Tuple=(-0.05, 0.05)):
+                 bounds: Tuple=(-0.05, 0.05)) -> float:
         """ Innovation process perfomed by Firm agents.
 
         Args:
@@ -1063,13 +1196,24 @@ class CapitalFirm(Firm):
            3) Update capital, cost and price
            4) Advertise own machines.
         """
+        
+        # -- CLIMATE CHANGE ADAPTATION -- #
+        if self.model.CCA["Firms"] and np.any(list(self.flood_depths.values())):
+            # Consider every year (= every 4 timesteps), if measure not taken yet
+            if self.lifetime % 4 == 0 and not np.all(list(self.adaptation.values())):
+                self.implement_CCA_measure()
 
         # -- FLOOD SHOCK: compute damage coefficient -- #
         if self.model.flood_now:
             flood_depth = self.flood_depths[self.model.flood_return]
             self.damage_coef = depth_to_damage("Industry", flood_depth)
+            # Reduce damage if adaptation measure has been taken
+            if self.adaptation["Dry_proof"] and flood_depth < 1.5:
+                self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+            self.monetary_damage = self.damage_coef * self.property_value
         else:
             self.damage_coef = 0
+
         # In case of flood damage: destroy (part of) capital
         if self.damage_coef > 0:
             self.damage_capital()
@@ -1275,21 +1419,28 @@ class ConsumptionFirm(Firm):
     def stage1(self) -> None:
         """First stage of consumption firm step function:
            First stage of capital firm step function:
-           1) Compute flood damage
-           2) Update capital, cost and price
-           3) Advertise own machines.
+           1) Consider climate change adaptation measures (dry-proofing)
+           2) Compute flood damage
+           3) Update capital, cost and price
+           4) Advertise own machines.
         """
+
+        # -- CLIMATE CHANGE ADAPTATION -- #
+        if self.model.CCA["Firms"] and np.any(list(self.flood_depths.values())):
+            # Consider every year (= every 4 timesteps), if measure not taken yet
+            if self.lifetime % 4 == 0 and not np.all(list(self.adaptation.values())):
+                self.implement_CCA_measure()
 
         # -- FLOOD SHOCK: compute damage coefficient -- #
         if self.model.flood_now:
             flood_depth = self.flood_depths[self.model.flood_return]
             self.damage_coef = depth_to_damage("Industry", flood_depth)
+            # Reduce damage if adaptation measure has been taken
+            if self.adaptation["Dry_proof"] and flood_depth < 1.5:
+                self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+            self.monetary_damage = self.damage_coef * self.property_value
         else:
             self.damage_coef = 0
-
-        # In case of flood damage: destroy (part of) capital
-        if self.damage_coef > 0:
-            self.damage_capital()
 
         # Update capital and reset debt
         self.update_capital()

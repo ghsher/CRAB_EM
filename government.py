@@ -203,6 +203,10 @@ class Government(Agent):
     def stage1(self) -> None:
         """First stage of Government step function. """
 
+        # Reset repair and adaptation costs
+        self.total_repair_expenses = 0
+        self.total_cca_investment = 0
+
         # Set minimum wage (and unemployment subsidy)
         self.set_min_wage()
 
@@ -291,9 +295,8 @@ class Government(Agent):
         # Save regional and export demands per consumption sector
         goods_consumption = FRAC_CONS_IN_GOODS * total_consumption
         service_consumption = total_consumption - goods_consumption
-        # Add flood shock damage repairs to goods consumption
-        goods_consumption += self.total_repair_expenses
-        self.total_repair_expenses = 0
+        # Add flood shock damage repairs and adaptation investments to goods consumption
+        goods_consumption += self.total_repair_expenses + self.total_cca_investment
 
         export_demand_cons = self.demand_RoW * FRAC_CONS_IN_GOODS
         export_demand_serv = self.demand_RoW - export_demand_cons
