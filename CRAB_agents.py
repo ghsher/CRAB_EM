@@ -44,10 +44,13 @@ DAMAGE_CURVES = {"Residential":
                  "Industry":
                     {"Depth": [0, 0.5, 1, 1.5, 2, 3, 4, 5, 6],
                      "Damage": [0, 0.24, 0.37, 0.47, 0.55, 0.69, 0.82, 0.91, 1]}}
-DAMAGE_REDUCTION = {"Elevation": 3, "Dry_proof": 0.4, "Wet_proof": 0.5}
+DAMAGE_REDUCTION = {"Households":
+                        {"Elevation": 3, "Dry_proof": 0.4, "Wet_proof": 0.5},
+                    "Firms":
+                        {"Dry_proof": 0.85}
+                    }
 # -- ADAPTATION CONSTANTS -- #
 CCA_COSTS = {"Elevation": 2, "Dry_proof": 0.5, "Wet_proof": 1}
-FIRM_CCA_EFFICACY = 0.85
 
 
 def systemic_tax(profits: list, sales: float, quintiles: list,
@@ -236,9 +239,11 @@ class Household(CRAB_Agent):
 
         # Reduce damage when wet- or dry_proofed
         if self.adaptation["Dry_proof"] and flood_depth < 1:
-            self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+            self.damage_coef -= (self.damage_coef *
+                                 DAMAGE_REDUCTION["Households"]["Dry_proof"])
         if self.adaptation["Wet_proof"]:
-            self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Wet_proof"])
+            self.damage_coef -= (self.damage_coef *
+                                 DAMAGE_REDUCTION["Households"]["Wet_proof"])
         # Compute monetary damage
         self.monetary_damage += self.house_value * self.damage_coef
         self.flood_experience = 1
@@ -310,7 +315,7 @@ class Household(CRAB_Agent):
             gov = self.model.governments[self.region]
             if gov.CCA_subsidy == True:
                 # Implement measure (for elevation: set equal to new height)
-                self.adaptation[measure] = (DAMAGE_REDUCTION["Elevation"]
+                self.adaptation[measure] = (DAMAGE_REDUCTION["Households"]["Elevation"]
                                             if measure == "Elevation" else 1)
                 self.adaptation_costs = 0
                 self.measure_to_impl = None
@@ -328,7 +333,7 @@ class Household(CRAB_Agent):
         self.net_worth -= self.adaptation_costs
         gov.total_cca_investment += self.adaptation_costs
         # Implement measure (for elevation: set equal to new height)
-        self.adaptation[measure] = (DAMAGE_REDUCTION["Elevation"]
+        self.adaptation[measure] = (DAMAGE_REDUCTION["Households"]["Elevation"]
                                     if measure == "Elevation" else 1)
         # Adjust perceived damage with response efficacy
         resp_eff = self.CCA_perc[self.measure_to_impl]["Response efficacy"]
@@ -570,7 +575,7 @@ class Firm(CRAB_Agent):
         # Get initial costs of given strategy (cost = 0 for doing nothing)
         npv = -cost if strategy == "dry_proofing" else 0
         # Dry-proofing is effective only up to 1.5 meters
-        efficacy = FIRM_CCA_EFFICACY if depth < 1.5 else 0
+        efficacy = DAMAGE_REDUCTION["Firms"]["Dry_proof"] if depth < 1.5 else 0
         # Calculate discounted expected utility for given time horizon
         for t in range(1, T+1):
             wealth *= (1 + g)
@@ -1217,7 +1222,8 @@ class CapitalFirm(Firm):
             self.damage_coef = depth_to_damage("Industry", flood_depth)
             # Reduce damage if adaptation measure has been taken
             if self.adaptation["Dry_proof"] and flood_depth < 1.5:
-                self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+                self.damage_coef -= (self.damage_coef *
+                                     DAMAGE_REDUCTION["Firms"]["Dry_proof"])
             self.monetary_damage = self.damage_coef * self.property_value
         else:
             self.damage_coef = 0
@@ -1453,7 +1459,8 @@ class ConsumptionFirm(Firm):
             self.damage_coef = depth_to_damage("Industry", flood_depth)
             # Reduce damage if adaptation measure has been taken
             if self.adaptation["Dry_proof"] and flood_depth < 1.5:
-                self.damage_coef -= (self.damage_coef * DAMAGE_REDUCTION["Dry_proof"])
+                self.damage_coef -= (self.damage_coef *
+                                     DAMAGE_REDUCTION["Firms"]["Dry_proof"])
             self.monetary_damage = self.damage_coef * self.property_value
         else:
             self.damage_coef = 0
