@@ -144,6 +144,13 @@ class Household(CRAB_Agent):
         flood_depths = HH_attributes.filter(regex="Flood depth")
         flood_depths = {int(RP.lstrip("Flood depth RP")): depth
                         for RP, depth in flood_depths.items()}
+        # XXX: SUPER TEMPORARY SOLUTION TO HH_attributes NOT HAVING ALL FLOOD RPs
+        #       HUUUUUGE ASSUMPTIONS BEING MADE
+        if len(flood_depths.keys()) == 1 and 30000 in flood_depths.keys():
+            flood_depths[3000] = flood_depths[30000]
+            flood_depths[300] = max(0, (flood_depths[3000]-0.20)*0.85)
+            flood_depths[30] = max(0, (flood_depths[300]-0.15)*0.85)
+            
         super().__init__(model, region, flood_depths)
 
         # -- SOCIO-ECONOMIC ATTRIBUTES -- #
@@ -456,7 +463,7 @@ class Firm(CRAB_Agent):
                  flood_depths: dict, area: float, property_value: float,
                  market_share: float, net_worth: int,
                  init_n_machines: int, init_cap_amount: int,
-                 cap_out_ratio: float, supplier: Type[Firm]=None,
+                 cap_out_ratio: float, markup: float, supplier: Type[Firm]=None,
                  sales: int=10, wage: float=None, price: float=None,
                  prod: float=None, lifetime: int=1) -> None:
         """Initialize firm agent.
@@ -472,6 +479,7 @@ class Firm(CRAB_Agent):
             init_n_machines     : Initial number of machines
             init_cap_amount     : Initial capital amount per machine
             cap_out_ratio       : Capital output ratio
+            markup              : Initial markup
             supplier            : Capital firm supplier
             sales               : Initial sales
             wage                : Initial wage
@@ -487,6 +495,7 @@ class Firm(CRAB_Agent):
         self.lifetime = lifetime
         self.net_worth = net_worth
         self.cap_out_ratio = cap_out_ratio
+        self.markup = markup
         self.subsidiary_counter = 0
         
         # -- LABOR MARKET ATTRIBUTES -- #
@@ -1105,9 +1114,9 @@ class CapitalFirm(Firm):
             prod -= prod * self.damage_coef
         self.cost = self.wage / prod
 
-    def update_price(self, markup: float=0.4) -> None:
+    def update_price(self) -> None:
       """Update firm unit price. """
-      self.price = round((1 + markup) * self.cost, 3)
+      self.price = round((1 + self.markup) * self.cost, 3)
 
     def advertise(self) -> None:
         """Advertise: create new brochures, select new clients, send brochures."""
@@ -1390,8 +1399,9 @@ class ConsumptionFirm(Firm):
                                     ((self.market_share_history[-1] -
                                       self.market_share_history[-2]) /
                                       self.market_share_history[-2])), 5)))
-        else:
-            self.markup = 0.35
+        # Can cut this as we have a default init markup now
+        # else:
+        #     self.markup = 0.35
 
         # Adjust price based on new cost and markup, bounded between
         # 0.7 and 1.3 times the old price to avoid large oscillations

@@ -53,9 +53,6 @@ INIT_CAP_AMOUNT = {CapitalFirm: 3,              # Initial capital per machine
 INIT_N_MACHINES = {CapitalFirm: 20,             # Initial number of machines
                    ConsumptionGoodFirm: 20,
                    ServiceFirm: 15}
-CAP_OUT_RATIO = {CapitalFirm:  0.4,             # Capital output ratio per firm type
-                 ConsumptionGoodFirm: 1,
-                 ServiceFirm: 1}
 
 # -- ADAPTATION ATTRIBUTES -- #
 AVG_HH_CONNECTIONS = 7
@@ -66,12 +63,14 @@ class CRAB_Model(Model):
 
     def __init__(self, random_seed: int, HH_attributes: pd.DataFrame,
                  firm_flood_depths: pd.DataFrame, PMT_weights: pd.DataFrame,
-                 firms_RD: bool=True, migration: dict={"Regional": False, "RoW": False},
-                 social_net: bool=True, CCA: dict={"Households": False, "Firms": False},
+                 firms_RD: bool=True, social_net: bool=True,
+                 migration: dict={"Regional": False, "RoW": False},
+                 CCA: dict={"Households": False, "Firms": False},
                  flood_when: dict={},
                  debt_sales_ratio: float=2.0,
                  wage_sensitivity_prod: float=0.2,
-                 init_markup: float=0.25) -> None:
+                 init_markup: float=0.25,
+                 capital_firm_cap_out_ratio: float=0.4) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -125,22 +124,29 @@ class CRAB_Model(Model):
             self.PMT_weights = PMT_weights
 
         # -- SAVE INPUT FACTORS AS CONSTANTS -- #
+        # Firms' allowed debt as a ratio of sales
         self.DEBT_SALES_RATIO = debt_sales_ratio
+        # Sensitivity of wage changes to firm productivity
         self.WAGE_SENSITIVITY_PROD = wage_sensitivity_prod
-
+        # Capital output ratio per firm type
+        self.CAP_OUT_RATIO = {                        
+            CapitalFirm: capital_firm_cap_out_ratio,             
+            ConsumptionGoodFirm: 1,
+            ServiceFirm: 1
+        }
 
         # -- INITIALIZE AGENTS -- #
         # Agent control parameters
-        self.init_markup = {}
-        for k in N_FIRMS[REGIONS[0]]:
-            self.init_markup[k] = init_markup
+        self.INIT_MARKUP = {}
+        for k in N_FIRMS[REGIONS[0]]: # proxy for firm types
+            self.INIT_MARKUP[k] = init_markup # TODO: diff between capital and cons?
 
         # Add households and firms per region
         self.governments = defaultdict(list)
         self.firms = defaultdict(list)
         self.households = defaultdict(list)
         self.social_networks = {}
-        
+
         # Add households and firms per region
         for region in REGIONS:
             # -- CREATE FIRMS -- #
@@ -161,8 +167,8 @@ class CRAB_Model(Model):
                                   net_worth=INIT_NET_WORTH[firm_type],
                                   init_n_machines=INIT_N_MACHINES[firm_type],
                                   init_cap_amount=INIT_CAP_AMOUNT[firm_type],
-                                  cap_out_ratio=CAP_OUT_RATIO[firm_type],
-                                  markup=self.init_markup[firm_type],
+                                  cap_out_ratio=self.CAP_OUT_RATIO[firm_type],
+                                  markup=self.INIT_MARKUP[firm_type],
                                   )
             
             # -- CREATE HOUSEHOLDS -- #
@@ -249,7 +255,7 @@ class CRAB_Model(Model):
         net_worth = (max(50, round(gov.avg_net_worth_per_sector[firm_type], 4)))
         # Get capital amount for new firms from government
         capital_amount = round(gov.capital_new_firm[firm_type] *
-                               CAP_OUT_RATIO[firm_type])
+                               self.CAP_OUT_RATIO[firm_type])
 
         # Initialize random flood depth (from properties file)
         idx = self.RNGs[firm_type].choice(self.firm_flood_depths.index)
@@ -281,7 +287,8 @@ class CRAB_Model(Model):
                                  area=area, property_value=property_value,
                                  market_share=market_share, net_worth=net_worth,
                                  init_n_machines=1, init_cap_amount=capital_amount,
-                                 cap_out_ratio=CAP_OUT_RATIO[firm_type],
+                                 cap_out_ratio=self.CAP_OUT_RATIO[firm_type],
+                                 markup=self.INIT_MARKUP[firm_type],
                                  supplier=supplier, sales=capital_amount, prod=prod,
                                  machine_prod=machine_prod, wage=wage, lifetime=0)
         elif firm_type == ConsumptionGoodFirm or ServiceFirm:
@@ -289,7 +296,8 @@ class CRAB_Model(Model):
             new_firm = firm_type(model=self, region=region, flood_depths=flood_depths,
                                  area=area, property_value=property_value,
                                  market_share=0, init_n_machines=1, init_cap_amount=capital_amount,
-                                 cap_out_ratio=CAP_OUT_RATIO[firm_type],
+                                 cap_out_ratio=self.CAP_OUT_RATIO[firm_type],
+                                 markup=self.INIT_MARKUP[firm_type],
                                  supplier=supplier, net_worth=net_worth,
                                  sales=0, prod=prod, wage=wage, lifetime=0)
             # Initialze competitiveness from regional average
