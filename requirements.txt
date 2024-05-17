@@ -1,5 +1,11 @@
 jupyter==1.0.0
-matplotlib==3.8.2
-Mesa==2.1.2
-numpy==1.26.3
-scipy==1.8.0
+matplotlib==3.8.3
+Mesa==2.1.4
+numpy==1.26.4
+scipy==1.12.0
+ema-workbench==2.5.0
+dash==2.16.1
+plotly==5.20.0
+Flask==3.0.3
+ipyparallel==8.7.0
+tqdm==4.66.2
