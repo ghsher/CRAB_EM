@@ -21,18 +21,20 @@ from tqdm.auto import tqdm
 
 from ema_workbench import (
     ema_logging,
+    Model,
     ReplicatorModel,
     RealParameter,
     CategoricalParameter,
     # Constant,
-    ArrayOutcome,
+    TimeSeriesOutcome,
     # TimeSeriesOutcome,
     SequentialEvaluator,
     MultiprocessingEvaluator,
-    perform_experiments,
+    MPIEvaluator,
     Samplers,
     save_results,
 )
+from pff_sampler import PartialFactorialSampler
 
 from model import CRAB_Model
 from CRAB_agents import *
@@ -44,38 +46,31 @@ FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
 PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
 print(":::: Done reading")
 
-CCA_ENABLED = True
-SOCIAL_NET_ENABLED = True
-FIRMS_RD_ENABLED = True
+MIGRATION = {"Regional": False, "RoW": True}
+CCA = {"Households": True, "Firms": True}
+SOCIAL_NET = True
+FIRMS_RD = True
 
 N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 150 # 5 year burn-in + 25 years model time
+STEPS = 120 # 5 year burn-in + 25 years model time
 
 FLOOD_NARRATIVES = [
-        {75: 1000},
-        {40: 100, 60: 100, 80: 100, 100: 100},
-        {q:r for q,r in list(zip(range(30, 130, 5), [10 for _ in range(20)]))},
-        {60: 1000, 100: 100},
-        {60: 1000, 120: 1000},
+        {60: 3000},
+        {40: 3000, 70: 300},
+        {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
 ]
 
 FIRM_TYPES = [
-	Agriculture,
-	Industry,
-	Construction,
-	Transport,
-	Utilities,
-	Private_services,
-	Public_services,
-	Wholesale_Retail,
-    C26,
+	CapitalFirm,
+	ConsumptionGoodFirm,
+	ServiceFirm
 ]
-
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
-        init_markup: float=0.25, flood_narrative: dict={},
+        init_markup: float=0.25, capital_firm_cap_out_ratio: float=0.4,
+        flood_narrative: dict={},
         seed=0, steps: int=200, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -85,13 +80,16 @@ def CRAB_model_wrapper(
         #  and control it with a CategoricalParameter that indicates
         #  the file name).
         HH_attributes=HH_ATTRIBUTES,
-        firm_flood_depths=FIRM_ATTRIBUTES, PMT_weights=PMT_WEIGHTS,
-        firms_RD=FIRMS_RD_ENABLED,
-        CCA=CCA_ENABLED, social_net=SOCIAL_NET_ENABLED,
+        firm_flood_depths=FIRM_ATTRIBUTES,
+        PMT_weights=PMT_WEIGHTS,
+        firms_RD=FIRMS_RD,
+        social_net=SOCIAL_NET,
+        migration=MIGRATION, CCA=CCA,
         # Controllable parameters
         debt_sales_ratio=debt_sales_ratio,
         wage_sensitivity_prod=wage_sensitivity_prod,
         init_markup=init_markup,
+        capital_firm_cap_out_ratio=capital_firm_cap_out_ratio,
         flood_when=flood_narrative,
         random_seed=seed)
     
@@ -117,7 +115,7 @@ def CRAB_model_wrapper(
 
     # 0. Populations
     out['Household Population'] = get_population(agent_dfs[Household], aslist=True)
-    out['Firm Population'] = get_population(agent_dfs['Firms'])
+    out['Firm Population'] = get_population(agent_dfs['Firms'], aslist=True)
     for firm in FIRM_TYPES:
         name = firm.__name__
         out[f'{name} Population'] = get_population(agent_dfs[firm], aslist=True)
@@ -142,13 +140,14 @@ def CRAB_model_wrapper(
     #     name = firm.__name__
     #     out[f'Share of Large Firms ({name})'] = get_share_large_firms(agent_dfs[firm])
     # out['Share of Large Firms (All)'] = get_share_large_firms(agent_dfs['Firms'])
-    for firm in FIRM_TYPES:
-        name = firm.__name__
-        out[f'10th Percentile Firm Size ({name})'] = get_10th_p_firm_size(agent_dfs[firm])
-        out[f'90th Percentile Firm Size ({name})'] = get_90th_p_firm_size(agent_dfs[firm])
-        out[f'Median Firm Size ({name})'] = get_median_firm_size(agent_dfs[firm])
+    # for firm in FIRM_TYPES:
+    #     name = firm.__name__
+    #     out[f'10th Percentile Firm Size ({name})'] = get_10th_p_firm_size(agent_dfs[firm])
+    #     out[f'90th Percentile Firm Size ({name})'] = get_90th_p_firm_size(agent_dfs[firm])
+    #     out[f'Median Firm Size ({name})'] = get_median_firm_size(agent_dfs[firm])
 
-    # 4. Gini (TODO)
+    # 4. Inequality & Gini
+    out['Gini Coefficient'] = get_gini(agent_dfs[Household])
 
     # 5. Impact
     out['Total Household Damages'] = get_total_damage(agent_dfs[Household])
@@ -157,7 +156,6 @@ def CRAB_model_wrapper(
 
     # 6. Debt
     out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
-    # TODO: The latter by different industries
     # TODO: Government debt/deficit
 
     return out
@@ -168,16 +166,18 @@ ema_logging.LOG_FORMAT = "[EMA] %(message)s"
 ema_logging.log_to_stderr(ema_logging.INFO) #, pass_root_logger_level=True) # Uncomment for MPI
 
 # Build up the EMA_workbench Model object
-model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
+model = Model("CRAB", function=CRAB_model_wrapper)
+# model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
 
 # 1. Assign number of replications:
-model.replications = N_REPLICATIONS
+# model.replications = N_REPLICATIONS
 
 # 2. Define uncertainties & constant parameters:
 model.uncertainties = [
     RealParameter("debt_sales_ratio", 0.8, 5),
     RealParameter("wage_sensitivity_prod", 0.0, 1.0),
     RealParameter("init_markup", 0.05, 0.5),
+    RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
     CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
 ]
 
@@ -185,39 +185,38 @@ model.constants = []
 
 # 3. Define outcomes of interest to track
 outcomes = [
-    ArrayOutcome('Household Population'),
-    ArrayOutcome('Unemployment Rate'),
-    ArrayOutcome('Median Net Worth'),
-    ArrayOutcome('Median House Value'),
-    ArrayOutcome('Median Wage'),
-    ArrayOutcome('Minimum Wage'),
-    ArrayOutcome('Total Household Damages'),
-    ArrayOutcome('Average Income-Weighted Damages'),
+    TimeSeriesOutcome('Household Population'),
+    TimeSeriesOutcome('Unemployment Rate'),
+    TimeSeriesOutcome('Gini Coefficient'),
+    TimeSeriesOutcome('Median Net Worth'),
+    TimeSeriesOutcome('Median House Value'),
+    TimeSeriesOutcome('Median Wage'),
+    TimeSeriesOutcome('Minimum Wage'),
+    TimeSeriesOutcome('Total Household Damages'),
+    TimeSeriesOutcome('Average Income-Weighted Damages'),
 
-    ArrayOutcome('Firm Population'),
-    ArrayOutcome('GDP'),
-    ArrayOutcome('Total Firm Resources'),
-    ArrayOutcome('Total Firm Debt'),
-    # ArrayOutcome('Share of Large Firms (All)'),
+    TimeSeriesOutcome('Firm Population'),
+    TimeSeriesOutcome('GDP'),
+    TimeSeriesOutcome('Total Firm Resources'),
+    TimeSeriesOutcome('Total Firm Debt'),
+    # TimeSeriesOutcome('Share of Large Firms (All)'),
 ]
 for firm in FIRM_TYPES:
     name = firm.__name__
-    outcomes.append(ArrayOutcome(f'{name} Population'))
-    outcomes.append(ArrayOutcome(f'{name} Production Made'))
-    # outcomes.append(ArrayOutcome(f'Share of Large Firms ({name})'))
-    outcomes.append(ArrayOutcome(f'10th Percentile Firm Size ({name})'))
-    outcomes.append(ArrayOutcome(f'90th Percentile Firm Size ({name})'))
-    outcomes.append(ArrayOutcome(f'Median Firm Size ({name})'))
+    outcomes.append(TimeSeriesOutcome(f'{name} Population'))
+    outcomes.append(TimeSeriesOutcome(f'{name} Production Made'))
+    # outcomes.append(TimeSeriesOutcome(f'Share of Large Firms ({name})'))
+    # outcomes.append(TimeSeriesOutcome(f'10th Percentile Firm Size ({name})'))
+    # outcomes.append(TimeSeriesOutcome(f'90th Percentile Firm Size ({name})'))
+    # outcomes.append(TimeSeriesOutcome(f'Median Firm Size ({name})'))
 model.outcomes = outcomes
 
 # Run experiments!!!
 # NOTE: Change to MultiprocessingEvaluator when on Linux
-# NOTE: Best for now to manually define Scenarios instead of sampling
-#        until you fix the PFF problem
-with SequentialEvaluator(model) as evaluator:
+with MPIEvaluator(model) as evaluator:
     results = evaluator.perform_experiments(
-        scenarios=100,
-        uncertainty_sampling=Samplers.LHS
+        scenarios=10,
+        uncertainty_sampling=PartialFactorialSampler()
     )
     
-save_results(results, "results/0409_100_runs.tar.gz")
+save_results(results, "results/0515_pff_test.tar.gz")
