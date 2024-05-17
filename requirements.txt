@@ -9,3 +9,4 @@ plotly==5.20.0
 Flask==3.0.3
 ipyparallel==8.7.0
 tqdm==4.66.2
+mpi4py==3.1.6

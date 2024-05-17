@@ -40,33 +40,6 @@ from model import CRAB_Model
 from CRAB_agents import *
 from ema_data_collection import *
 
-print(":: Reading Adaptation & Flood Depth attribute CSVs")
-HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
-FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
-PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
-print(":::: Done reading")
-
-MIGRATION = {"Regional": False, "RoW": True}
-CCA = {"Households": True, "Firms": True}
-SOCIAL_NET = True
-FIRMS_RD = True
-
-N_REPLICATIONS = 1
-RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-STEPS = 120 # 5 year burn-in + 25 years model time
-
-FLOOD_NARRATIVES = [
-        {60: 3000},
-        {40: 3000, 70: 300},
-        {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
-]
-
-FIRM_TYPES = [
-	CapitalFirm,
-	ConsumptionGoodFirm,
-	ServiceFirm
-]
-
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
         init_markup: float=0.25, capital_firm_cap_out_ratio: float=0.4,
@@ -160,63 +133,90 @@ def CRAB_model_wrapper(
 
     return out
 
-# Runtime output settings
-# ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
-ema_logging.LOG_FORMAT = "[EMA] %(message)s"
-ema_logging.log_to_stderr(ema_logging.INFO) #, pass_root_logger_level=True) # Uncomment for MPI
+if __name__ == "__main__":
+    # Constants 
+    print(":: Reading Adaptation & Flood Depth attribute CSVs")
+    HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
+    FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
+    PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+    print(":::: Done reading")
 
-# Build up the EMA_workbench Model object
-model = Model("CRAB", function=CRAB_model_wrapper)
-# model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
+    MIGRATION = {"Regional": False, "RoW": True}
+    CCA = {"Households": True, "Firms": True}
+    SOCIAL_NET = True
+    FIRMS_RD = True
 
-# 1. Assign number of replications:
-# model.replications = N_REPLICATIONS
+    N_REPLICATIONS = 1
+    RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
+    STEPS = 120 # 5 year burn-in + 25 years model time
+    FLOOD_NARRATIVES = [
+            {60: 3000},
+            {40: 3000, 70: 300},
+            {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
+    ]
+    FIRM_TYPES = [
+        CapitalFirm,
+        ConsumptionGoodFirm,
+        ServiceFirm
+    ]
 
-# 2. Define uncertainties & constant parameters:
-model.uncertainties = [
-    RealParameter("debt_sales_ratio", 0.8, 5),
-    RealParameter("wage_sensitivity_prod", 0.0, 1.0),
-    RealParameter("init_markup", 0.05, 0.5),
-    RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
-    CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
-]
+    # Runtime output settings
+    # ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
+    ema_logging.LOG_FORMAT = "[EMA] %(message)s"
+    ema_logging.log_to_stderr(ema_logging.INFO) #, pass_root_logger_level=True) # Uncomment for MPI
 
-model.constants = []
+    # Build up the EMA_workbench Model object
+    model = Model("CRAB", function=CRAB_model_wrapper)
+    # model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
 
-# 3. Define outcomes of interest to track
-outcomes = [
-    TimeSeriesOutcome('Household Population'),
-    TimeSeriesOutcome('Unemployment Rate'),
-    TimeSeriesOutcome('Gini Coefficient'),
-    TimeSeriesOutcome('Median Net Worth'),
-    TimeSeriesOutcome('Median House Value'),
-    TimeSeriesOutcome('Median Wage'),
-    TimeSeriesOutcome('Minimum Wage'),
-    TimeSeriesOutcome('Total Household Damages'),
-    TimeSeriesOutcome('Average Income-Weighted Damages'),
+    # 1. Assign number of replications:
+    # model.replications = N_REPLICATIONS
 
-    TimeSeriesOutcome('Firm Population'),
-    TimeSeriesOutcome('GDP'),
-    TimeSeriesOutcome('Total Firm Resources'),
-    TimeSeriesOutcome('Total Firm Debt'),
-    # TimeSeriesOutcome('Share of Large Firms (All)'),
-]
-for firm in FIRM_TYPES:
-    name = firm.__name__
-    outcomes.append(TimeSeriesOutcome(f'{name} Population'))
-    outcomes.append(TimeSeriesOutcome(f'{name} Production Made'))
-    # outcomes.append(TimeSeriesOutcome(f'Share of Large Firms ({name})'))
-    # outcomes.append(TimeSeriesOutcome(f'10th Percentile Firm Size ({name})'))
-    # outcomes.append(TimeSeriesOutcome(f'90th Percentile Firm Size ({name})'))
-    # outcomes.append(TimeSeriesOutcome(f'Median Firm Size ({name})'))
-model.outcomes = outcomes
+    # 2. Define uncertainties & constant parameters:
+    model.uncertainties = [
+        RealParameter("debt_sales_ratio", 0.8, 5),
+        RealParameter("wage_sensitivity_prod", 0.0, 1.0),
+        RealParameter("init_markup", 0.05, 0.5),
+        RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
+        CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
+    ]
 
-# Run experiments!!!
-# NOTE: Change to MultiprocessingEvaluator when on Linux
-with MPIEvaluator(model) as evaluator:
-    results = evaluator.perform_experiments(
-        scenarios=10,
-        uncertainty_sampling=PartialFactorialSampler()
-    )
-    
-save_results(results, "results/0515_pff_test.tar.gz")
+    model.constants = []
+
+    # 3. Define outcomes of interest to track
+    outcomes = [
+        TimeSeriesOutcome('Household Population'),
+        TimeSeriesOutcome('Unemployment Rate'),
+        TimeSeriesOutcome('Gini Coefficient'),
+        TimeSeriesOutcome('Median Net Worth'),
+        TimeSeriesOutcome('Median House Value'),
+        TimeSeriesOutcome('Median Wage'),
+        TimeSeriesOutcome('Minimum Wage'),
+        TimeSeriesOutcome('Total Household Damages'),
+        TimeSeriesOutcome('Average Income-Weighted Damages'),
+
+        TimeSeriesOutcome('Firm Population'),
+        TimeSeriesOutcome('GDP'),
+        TimeSeriesOutcome('Total Firm Resources'),
+        TimeSeriesOutcome('Total Firm Debt'),
+        # TimeSeriesOutcome('Share of Large Firms (All)'),
+    ]
+    for firm in FIRM_TYPES:
+        name = firm.__name__
+        outcomes.append(TimeSeriesOutcome(f'{name} Population'))
+        outcomes.append(TimeSeriesOutcome(f'{name} Production Made'))
+        # outcomes.append(TimeSeriesOutcome(f'Share of Large Firms ({name})'))
+        # outcomes.append(TimeSeriesOutcome(f'10th Percentile Firm Size ({name})'))
+        # outcomes.append(TimeSeriesOutcome(f'90th Percentile Firm Size ({name})'))
+        # outcomes.append(TimeSeriesOutcome(f'Median Firm Size ({name})'))
+    model.outcomes = outcomes
+
+    # Run experiments!!!
+    # NOTE: Change to MultiprocessingEvaluator when on Linux
+    with MultiprocessingEvaluator(model) as evaluator:
+        results = evaluator.perform_experiments(
+            scenarios=1,
+            uncertainty_sampling=PartialFactorialSampler()
+        )
+        
+    save_results(results, "results/0515_mpi_testing.tar.gz")
