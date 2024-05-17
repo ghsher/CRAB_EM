@@ -60,6 +60,28 @@ def get_unemployment(hh_data, hh_pop=None):
 
     return unemployment_rate.tolist()
 
+#   c(i). Gini index
+def get_gini(hh_data, hh_pop=None):
+    # If not given population, get it
+    if hh_pop is None:
+        hh_pop = get_population(hh_data)#, aslist=True)
+
+    ginis = []
+    for step, row in hh_data:
+        # Get agent wealths at current timestep
+        wealths = row['Net Worth'] + row['Wage'] # + row['House Value'] ?
+        wealths = sorted(wealths.tolist())
+
+        # Get agent population at current timestep
+        pop = hh_pop[step]
+
+        # Calculate Gini for current timestep
+        rel_wealths = [w * (pop - i) for i, w in enumerate(wealths)]
+        B = sum(rel_wealths) / (pop * sum(wealths))
+        ginis.append(1 + (1/pop) - 2*B)
+    
+    return ginis
+
 ##################################################
 ### 2. WEALTH (outcome & endogenous predictor) ###
 ##################################################

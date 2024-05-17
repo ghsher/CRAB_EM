@@ -97,7 +97,6 @@ agent_vars['Firm Size'] = lambda a: getattr(a, 'size', None)
 # Distributional effects can also be measured by keeping agent data
 #  partially disaggregated by adaptive capacity & income quartile
 
-
 #################################
 ### 5. FLOOD IMPACT (outcome) ###
 #################################
@@ -105,8 +104,6 @@ agent_vars['Firm Size'] = lambda a: getattr(a, 'size', None)
 #	a. Flood damages
 #	    Since we want to be able to normalize Damages by income or other 
 #		measures, we should track this at an agent level
-#		TODO: Check with Liz about implementation (doesn't update until all repairs are done)
-#				(see issue_archive.md)
 agent_vars['Damages'] = lambda a: getattr(a, 'monetary_damage', None)
 
 #	b. Net worth recovery (by household)
