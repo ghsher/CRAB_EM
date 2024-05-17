@@ -1220,14 +1220,14 @@ class CapitalFirm(Firm):
         else:
             self.damage_coef = 0
 
-        # In case of flood damage: destroy (part of) capital
-        if self.damage_coef > 0:
-            self.damage_capital()
-
         # -- RESEARCH AND DEVELOPMENT -- #
         if self.model.firms_RD:
             self.RD()
-        # Update capital and reset debt
+
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
+        # Update capital (handle orders and remove too old machines) and reset debt
         self.update_capital()
         self.debt = 0
 
@@ -1331,6 +1331,8 @@ class CapitalFirm(Firm):
         self.offers = {}
         # Inherit CRAB Agent stage 8 dynamic: increase lifetime
         super().stage8()
+        if self.unique_id == 42:
+            print(len(self.capital_vintage))
 
 
 class ConsumptionFirm(Firm):
@@ -1448,8 +1450,11 @@ class ConsumptionFirm(Firm):
             self.monetary_damage = self.damage_coef * self.property_value
         else:
             self.damage_coef = 0
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
 
-        # Update capital and reset debt
+        # Update capital (handle orders and remove too old machines) and reset debt
         self.update_capital()
         self.debt = 0
 
