@@ -55,6 +55,9 @@ model_vars = {# -- FLOOD -- #
 			  "Total HH flood damage":
 			   		lambda m: sum(hh.monetary_damage
 			   					  for hh in m.get_households(REGION)),
+		      "Total firm flood damage":
+			   		lambda m: sum(firm.monetary_damage
+			   					  for firm in m.get_firms(REGION)),
 			  "Total damage repair costs":
 			  		lambda m: m.governments[REGION].total_repair_expenses,
 			  "Total adaptation costs":
@@ -86,6 +89,10 @@ agent_vars = {# -- ALL AGENTS ATTRIBUTES -- #
 			  		lambda a: getattr(a, "net_worth", None),
 			  "Wage":
 			  		lambda a: getattr(a, "wage", None),
+			  "Repair costs":
+			  		lambda a: getattr(a, "repair_expenses", None),
+			  "Adaptation costs":
+			  		lambda a: getattr(a, "adaptation_costs", None),
 
 			  # -- HOUSEHOLD ATTRIBUTES -- #
 			  "Consumption":
