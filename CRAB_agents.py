@@ -96,14 +96,22 @@ def depth_to_damage(building_type: str, flood_depth: float) -> float:
     return damage_coef
 
 
-def cost_of_dry_proofing(area: int) -> float:
+def cost_of_dry_proofing(area: int, cost_per_meter: float=165.71,
+                         scaling: float=4000, params=(5.296, 0.736)) -> float:
     """Function to calculate the cost of dry-proofing based on the area.
-       Values based on 10.1088/1748-9326/ab0770 (supplementary information)
+       Values based on:
+       Haer et al. (2019), https://doi.org/10.1088/1748-9326/ab0770
+            (supplementary information)
     
     Args:
-        area        : Property area
+        area                : Property area
+        cost_per_meter      : Cost of dry-proofing per building perimeter meter
+        scaling             : Normalize costs given in euros
+        params     : Params for building perimeter to surface function
     """
-    return (165.71/4000) * ((5.296/4000) * area**0.736)
+
+    area *= 1550  # Convert area m2 to sq. inch
+    return (cost_per_meter/scaling * ((params[0]/scaling) * area**params[1]))
 
 
 class CRAB_Agent(Agent):
@@ -350,6 +358,8 @@ class Household(CRAB_Agent):
         # -- Flood shock -- #
         if self.model.flood_now:
             self.flood_damage()
+        else:
+            self.damage_coef = 0
 
     def stage2(self) -> None:
         pass
@@ -925,12 +935,14 @@ class Firm(CRAB_Agent):
             # If affordable: repair all damage
             if self.net_worth > self.monetary_damage:
                 self.net_worth -= self.monetary_damage
-                gov.total_repair_expenses += self.monetary_damage
+                self.repair_expenses = self.monetary_damage
+                gov.total_repair_expenses += self.repair_expenses
                 self.monetary_damage = 0
             # Else: repair some damage
             else:
                 self.monetary_damage -= self.net_worth
-                gov.total_repair_expenses += self.net_worth
+                self.repair_expenses = self.net_worth
+                gov.total_repair_expenses += self.repair_expenses
                 self.net_worth = 0
 
     def update_net_worth(self) -> float:
@@ -945,7 +957,6 @@ class Firm(CRAB_Agent):
         # Spend planned adaptation costs
         gov = self.model.governments[self.region]
         gov.total_cca_investment += self.adaptation_costs
-        self.adaptation_costs = 0
 
         # If firm made profits: pay taxes
         if self.profits > 0:
@@ -1214,6 +1225,8 @@ class CapitalFirm(Firm):
         if self.model.CCA["Firms"] and np.any(list(self.flood_depths.values())):
             # Consider every year (= every 4 timesteps), if measure not taken yet
             if self.lifetime % 4 == 0 and not np.all(list(self.adaptation.values())):
+                # Reset adaptation costs
+                self.adaptation_costs = 0
                 self.implement_CCA_measure()
 
         # -- FLOOD SHOCK: compute damage coefficient -- #
@@ -1228,14 +1241,14 @@ class CapitalFirm(Firm):
         else:
             self.damage_coef = 0
 
-        # In case of flood damage: destroy (part of) capital
-        if self.damage_coef > 0:
-            self.damage_capital()
-
         # -- RESEARCH AND DEVELOPMENT -- #
         if self.model.firms_RD:
             self.RD()
-        # Update capital and reset debt
+
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
+        # Update capital (handle orders and remove too old machines) and reset debt
         self.update_capital()
         self.debt = 0
 
@@ -1465,7 +1478,11 @@ class ConsumptionFirm(Firm):
         else:
             self.damage_coef = 0
 
-        # Update capital and reset debt
+        # In case of flood damage: destroy (part of) capital
+        if self.damage_coef > 0:
+            self.damage_capital()
+
+        # Update capital (handle orders and remove too old machines) and reset debt
         self.update_capital()
         self.debt = 0
 
