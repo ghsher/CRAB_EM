@@ -93,9 +93,9 @@ def CRAB_model_wrapper(
     
     for _ in tqdm(range(STEPS), total=STEPS, leave=False,
                   desc=f"MODEL RUN (DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, " +
-                       f"MKP={init_markup:.2}, CAP={capital_firm_cap_out_ratio}, " +
-                       f"EMP={min_unempl_emigration:.2}-{(min_unempl_emigration+migration_unempl_bounds_diff):.2}, " +
-                       f"FLD={flood_timing}:{flood_intensity})"):
+                       f"MKP={init_markup:.2}, CAP={capital_firm_cap_out_ratio:.2}, " +
+                       f"EMPL={min_unempl_emigration:.2}->{(min_unempl_emigration+migration_unempl_bounds_diff):.2}, " +
+                       f"FLD={flood_intensity}@{flood_timing})"):
         model.step()
 
     model_df = model.datacollector.get_model_vars_dataframe()
