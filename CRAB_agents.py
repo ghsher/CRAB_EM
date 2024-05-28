@@ -658,7 +658,7 @@ class Firm(CRAB_Agent):
                 self.adaptation_costs = cost
             # Else: check if can be afforded by taking on debt
             elif self.net_worth > 0:
-                debt_affordable = self.sales * DEBT_SALES_RATIO
+                debt_affordable = self.sales * self.model.DEBT_SALES_RATIO
                 debt_required = cost - self.net_worth
                 if debt_affordable > debt_required:
                     self.debt = debt_required
