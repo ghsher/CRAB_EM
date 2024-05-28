@@ -65,8 +65,9 @@ FIRM_TYPES = [
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
         init_markup: float=0.25, capital_firm_cap_out_ratio: float=0.4,
+        min_unempl_emigration: float=0.04, migration_unempl_bounds_diff: float=0.15,
         flood_narrative: dict={},
-        seed=0, steps: int=200, outcomes: list=[]) -> None:
+        seed=0, steps: int=120, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
         # Standard parameters
@@ -85,6 +86,8 @@ def CRAB_model_wrapper(
         wage_sensitivity_prod=wage_sensitivity_prod,
         init_markup=init_markup,
         capital_firm_cap_out_ratio=capital_firm_cap_out_ratio,
+        min_unempl_emigration=min_unempl_emigration,
+        migration_unempl_bounds_diff=migration_unempl_bounds_diff,
         flood_when=flood_narrative,
         random_seed=seed)
     
@@ -174,6 +177,8 @@ if __name__ == "__main__":
         RealParameter("wage_sensitivity_prod", 0.0, 1.0),
         RealParameter("init_markup", 0.05, 0.5),
         RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
+        RealParameter("min_unempl_emigration", 0.2, 0.08),
+        RealParameter("migration_unempl_bounds_diff", 0.10, 0.25),
         CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
     ]
 

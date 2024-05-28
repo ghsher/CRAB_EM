@@ -70,7 +70,9 @@ class CRAB_Model(Model):
                  debt_sales_ratio: float=2.0,
                  wage_sensitivity_prod: float=0.2,
                  init_markup: float=0.25,
-                 capital_firm_cap_out_ratio: float=0.4) -> None:
+                 capital_firm_cap_out_ratio: float=0.4,
+                 min_unempl_emigration: float=0.04,
+                 migration_unempl_bounds_diff: float=0.15) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -113,6 +115,8 @@ class CRAB_Model(Model):
 
         # -- MIGRATION ATTRIBUTES -- #
         self.migration = migration
+        self.min_unempl_emigration = min_unempl_emigration
+        self.max_unempl_immigration = self.min_unempl_emigration * migration_unempl_bounds_diff
 
         # -- FLOOD and ADAPTATION ATTRIBUTES -- #
         self.flood_when = flood_when
@@ -399,14 +403,11 @@ class CRAB_Model(Model):
                 if self.RNGs["HH_migration_regional"].binomial(1, p):
                     self.move_household(household, own_region, move_to_region)
 
-    def migration_RoW(self, region: int, noisiness: float=0.3,
-                      unempl_bounds: Tuple=(0.05, 0.2)) -> None:
+    def migration_RoW(self, region: int, noisiness: float=0.3) -> None:
         """Handles in- and outmigration processes (outside of model scope).
 
         Args:
             region          : Region to compute migration for
-            noisiness       : Amount of noise (0 - 1) in changes in population
-            unempl_bounds   : Unemployment values between which migration may happen
         """
 
         # Compute population change from average income change
@@ -422,12 +423,12 @@ class CRAB_Model(Model):
         # If population change is positive: add households
         if hh_pop_change > 0:
             # Check if unemployment is low enough and avg income high enough
-            if gov.unemployment_rate < unempl_bounds[1] and gov.income_pp > 1:
+            if gov.unemployment_rate < self.max_unempl_immigration and gov.income_pp > 1:
                 self.migration_in(region, hh_pop_change)
         # If population change is negative, remove households
         elif hh_pop_change < 0:
             # Check if unemployment is high enough
-            if gov.unemployment_rate > unempl_bounds[0]:
+            if gov.unemployment_rate > self.min_unempl_emigration:
                 self.migration_out(region, abs(hh_pop_change))
 
     def migration_in(self, region: int, pop_change: int) -> None:
