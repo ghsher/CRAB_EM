@@ -22,7 +22,8 @@ from ema_workbench import (
     Model,
     ReplicatorModel,
     RealParameter,
-    CategoricalParameter,
+    IntegerParameter,
+    Constant,
     TimeSeriesOutcome,
     SequentialEvaluator,
     MultiprocessingEvaluator,
@@ -30,7 +31,6 @@ from ema_workbench import (
     Samplers,
     save_results,
 )
-from pff_sampler import PartialFactorialSampler
 
 from model import CRAB_Model
 from CRAB_agents import *
@@ -50,23 +50,21 @@ N_REPLICATIONS = 1
 RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
 STEPS = 120 # 5 year burn-in + 25 years model time
 
-FLOOD_NARRATIVES = [
-        {60: 3000},
-        {40: 3000, 70: 300},
-        {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
+FLOOD_INTENSITIES = [
+    [3000]
 ]
 
 FIRM_TYPES = [
-        CapitalFirm,
-        ConsumptionGoodFirm,
-        ServiceFirm
+    CapitalFirm,
+    ConsumptionGoodFirm,
+    ServiceFirm
 ]
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
         init_markup: float=0.25, capital_firm_cap_out_ratio: float=0.4,
         min_unempl_emigration: float=0.04, migration_unempl_bounds_diff: float=0.15,
-        flood_narrative: dict={},
+        flood_intensity: int=3000, flood_timing: int=40,
         seed=0, steps: int=120, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -88,12 +86,16 @@ def CRAB_model_wrapper(
         capital_firm_cap_out_ratio=capital_firm_cap_out_ratio,
         min_unempl_emigration=min_unempl_emigration,
         migration_unempl_bounds_diff=migration_unempl_bounds_diff,
-        flood_when=flood_narrative,
+        flood_timing=flood_timing,
+        # Experiment parameters
+        flood_intensity=flood_intensity,
         random_seed=seed)
     
     for _ in tqdm(range(STEPS), total=STEPS, leave=False,
-                  desc=f"MODEL RUN: DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, " +
-                       f"MKP={init_markup:.2}, FLD={flood_narrative}"):
+                  desc=f"MODEL RUN (DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, " +
+                       f"MKP={init_markup:.2}, CAP={capital_firm_cap_out_ratio}, " +
+                       f"EMP={min_unempl_emigration:.2}-{(min_unempl_emigration+migration_unempl_bounds_diff):.2}, " +
+                       f"FLD={flood_timing}:{flood_intensity})"):
         model.step()
 
     model_df = model.datacollector.get_model_vars_dataframe()
@@ -177,12 +179,14 @@ if __name__ == "__main__":
         RealParameter("wage_sensitivity_prod", 0.0, 1.0),
         RealParameter("init_markup", 0.05, 0.5),
         RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
-        RealParameter("min_unempl_emigration", 0.2, 0.08),
+        RealParameter("min_unempl_emigration", 0.02, 0.08),
         RealParameter("migration_unempl_bounds_diff", 0.10, 0.25),
-        CategoricalParameter("flood_narrative", FLOOD_NARRATIVES, pff=True),
+        IntegerParameter("flood_timing", 30, 90),
     ]
 
-    model.constants = []
+    model.constants = [
+        Constant("flood_intensity", FLOOD_INTENSITIES[0][0]),
+    ]
 
     # 3. Define outcomes of interest to track
     outcomes = [
@@ -215,9 +219,9 @@ if __name__ == "__main__":
     # Run experiments!!!
     # NOTE: Change to MultiprocessingEvaluator when on Linux
     with MPIEvaluator(model) as evaluator:
+    # with SequentialEvaluator(model) as evaluator:
         results = evaluator.perform_experiments(
             scenarios=1,
-            uncertainty_sampling=PartialFactorialSampler()
         )
         
-    save_results(results, "results/0517_mpi_test.tar.gz")
+    save_results(results, "results/0528_flood_param_test.tar.gz")

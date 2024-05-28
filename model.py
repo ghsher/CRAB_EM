@@ -66,13 +66,14 @@ class CRAB_Model(Model):
                  firms_RD: bool=True, social_net: bool=True,
                  migration: dict={"Regional": False, "RoW": False},
                  CCA: dict={"Households": False, "Firms": False},
-                 flood_when: dict={},
                  debt_sales_ratio: float=2.0,
                  wage_sensitivity_prod: float=0.2,
                  init_markup: float=0.25,
                  capital_firm_cap_out_ratio: float=0.4,
                  min_unempl_emigration: float=0.04,
-                 migration_unempl_bounds_diff: float=0.15) -> None:
+                 migration_unempl_bounds_diff: float=0.15,
+                 flood_timing: int=40,
+                 flood_intensity: int=3000) -> None:
         """Initialization of the CRAB model.
 
         Args:
@@ -119,7 +120,8 @@ class CRAB_Model(Model):
         self.max_unempl_immigration = self.min_unempl_emigration * migration_unempl_bounds_diff
 
         # -- FLOOD and ADAPTATION ATTRIBUTES -- #
-        self.flood_when = flood_when
+        self.flood_intensity = flood_intensity
+        self.flood_timing = flood_timing
         self.firm_flood_depths = firm_flood_depths
         self.HH_attributes = HH_attributes
         self.CCA = CCA
@@ -523,9 +525,9 @@ class CRAB_Model(Model):
                     self.migration_RoW(region)
             
         # -- FLOOD SHOCK -- #
-        if self.schedule.time in self.flood_when.keys():
+        if self.schedule.time == self.flood_timing:
             self.flood_now = True
-            self.flood_return = self.flood_when[self.schedule.time]
+            self.flood_return = self.flood_intensity
         else:
             self.flood_now = False
             self.flood_return = 0
