@@ -15,8 +15,6 @@ Information about the EMA Workbench is available at
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 
 from ema_workbench import (
@@ -25,9 +23,7 @@ from ema_workbench import (
     ReplicatorModel,
     RealParameter,
     CategoricalParameter,
-    # Constant,
     TimeSeriesOutcome,
-    # TimeSeriesOutcome,
     SequentialEvaluator,
     MultiprocessingEvaluator,
     MPIEvaluator,
@@ -39,6 +35,32 @@ from pff_sampler import PartialFactorialSampler
 from model import CRAB_Model
 from CRAB_agents import *
 from ema_data_collection import *
+
+# Constants
+HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
+FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
+PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+
+MIGRATION = {"Regional": False, "RoW": True}
+CCA = {"Households": True, "Firms": True}
+SOCIAL_NET = True
+FIRMS_RD = True
+
+N_REPLICATIONS = 1
+RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
+STEPS = 120 # 5 year burn-in + 25 years model time
+
+FLOOD_NARRATIVES = [
+        {60: 3000},
+        {40: 3000, 70: 300},
+        {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
+]
+
+FIRM_TYPES = [
+        CapitalFirm,
+        ConsumptionGoodFirm,
+        ServiceFirm
+]
 
 def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
@@ -134,37 +156,11 @@ def CRAB_model_wrapper(
     return out
 
 if __name__ == "__main__":
-    # Constants 
-    print(":: Reading Adaptation & Flood Depth attribute CSVs")
-    HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
-    FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
-    PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
-    print(":::: Done reading")
-
-    MIGRATION = {"Regional": False, "RoW": True}
-    CCA = {"Households": True, "Firms": True}
-    SOCIAL_NET = True
-    FIRMS_RD = True
-
-    N_REPLICATIONS = 1
-    RANDOM_SEEDS = np.arange(0, 999999, int(999999/N_REPLICATIONS))
-    STEPS = 120 # 5 year burn-in + 25 years model time
-    FLOOD_NARRATIVES = [
-            {60: 3000},
-            {40: 3000, 70: 300},
-            {q:r for q,r in list(zip(range(30, 80, 5), [30 for _ in range(10)]))},
-    ]
-    FIRM_TYPES = [
-        CapitalFirm,
-        ConsumptionGoodFirm,
-        ServiceFirm
-    ]
 
     # Runtime output settings
     # ema_logging.LOG_FORMAT = "[%(name)s/%(levelname)s/%(processName)s] %(message)s"
     ema_logging.LOG_FORMAT = "[EMA] %(message)s"
-    ema_logging.log_to_stderr(ema_logging.INFO) #, pass_root_logger_level=True) # Uncomment for MPI
-
+    ema_logging.log_to_stderr(ema_logging.INFO, pass_root_logger_level=True) # Uncomment for MPI
     # Build up the EMA_workbench Model object
     model = Model("CRAB", function=CRAB_model_wrapper)
     # model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
@@ -213,10 +209,10 @@ if __name__ == "__main__":
 
     # Run experiments!!!
     # NOTE: Change to MultiprocessingEvaluator when on Linux
-    with MultiprocessingEvaluator(model) as evaluator:
+    with MPIEvaluator(model) as evaluator:
         results = evaluator.perform_experiments(
             scenarios=1,
             uncertainty_sampling=PartialFactorialSampler()
         )
         
-    save_results(results, "results/0515_mpi_testing.tar.gz")
+    save_results(results, "results/0517_mpi_test.tar.gz")
