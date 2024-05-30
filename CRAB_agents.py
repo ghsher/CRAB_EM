@@ -648,7 +648,7 @@ class Firm(CRAB_Agent):
         # -- CLIMATE CHANGE ADAPTATION: consider dry-proofing -- #
         
         # Calculate discounted expected utility of dry proofing
-        util_dry_proof, util_do_nothing, cost = self.calculate_DEU()
+        util_dry_proof, util_do_nothing, cost = self.calculate_DEU(beta=self.model.DEU_DISCOUNT_FACTOR)
 
         # Check if taking measure is preferable and affordable
         if util_dry_proof > util_do_nothing:
@@ -901,7 +901,7 @@ class Firm(CRAB_Agent):
             labor_demand        : Number of employees desired
         """
 
-        if self.feasible_production > 0:
+        if self.feasible_production > 0 and len(self.capital_vintage) > 0:
             self.prod = self.get_avg_prod()
             labor_demand = max(1, round(self.feasible_production / self.prod))
         else:
