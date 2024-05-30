@@ -31,6 +31,7 @@ from ema_workbench import (
     Samplers,
     save_results,
 )
+from ema_workbench.util import CaseError
 
 from model import CRAB_Model
 from CRAB_agents import *
@@ -64,7 +65,7 @@ def CRAB_model_wrapper(
         debt_sales_ratio: float=2.0, wage_sensitivity_prod: float=0.2,
         init_markup: float=0.25, capital_firm_cap_out_ratio: float=0.4,
         min_unempl_emigration: float=0.04, migration_unempl_bounds_diff: float=0.15,
-        flood_intensity: int=3000, flood_timing: int=40,
+        deu_discount_factor: float=1.0, flood_intensity: int=3000, flood_timing: int=40,
         seed=0, steps: int=120, outcomes: list=[]) -> None:
 
     model = CRAB_Model(
@@ -86,6 +87,7 @@ def CRAB_model_wrapper(
         capital_firm_cap_out_ratio=capital_firm_cap_out_ratio,
         min_unempl_emigration=min_unempl_emigration,
         migration_unempl_bounds_diff=migration_unempl_bounds_diff,
+        deu_discount_factor=deu_discount_factor,
         flood_timing=flood_timing,
         # Experiment parameters
         flood_intensity=flood_intensity,
@@ -158,6 +160,19 @@ def CRAB_model_wrapper(
     out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
     # TODO: Government debt/deficit
 
+    for key, val in out:
+        if np.isnan(val).any():
+            experiment_summary = {
+                'debt_sales_ratio' : debt_sales_ratio,
+                'wage_sensitivity_prod' : wage_sensitivity_prod,
+                'init_markup' : init_markup,
+                'capital_firm_cap_out_ratio' : capital_firm_cap_out_ratio,
+                'min_unempl_emigration' : min_unempl_emigration,
+                'migration_unempl_bounds_diff' : migration_unempl_bounds_diff,
+                'deu_discount_factor' : deu_discount_factor,
+                'flood_timing' : flood_timing,
+            }
+            raise CaseError(f"Have NaN in {key}", experiment_summary)
     return out
 
 if __name__ == "__main__":
@@ -181,6 +196,7 @@ if __name__ == "__main__":
         RealParameter("capital_firm_cap_out_ratio", 0.2, 0.6),
         RealParameter("min_unempl_emigration", 0.02, 0.08),
         RealParameter("migration_unempl_bounds_diff", 0.10, 0.25),
+        RealParameter("deu_discount_factor", 0.8, 1.0),
         IntegerParameter("flood_timing", 30, 90),
     ]
 
@@ -224,4 +240,4 @@ if __name__ == "__main__":
             scenarios=1,
         )
         
-    save_results(results, "results/0528_flood_param_test.tar.gz")
+    save_results(results, "results/filename.tar.gz")

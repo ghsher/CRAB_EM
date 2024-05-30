@@ -72,6 +72,7 @@ class CRAB_Model(Model):
                  capital_firm_cap_out_ratio: float=0.4,
                  min_unempl_emigration: float=0.04,
                  migration_unempl_bounds_diff: float=0.15,
+                 deu_discount_factor: float=1.0,
                  flood_timing: int=40,
                  flood_intensity: int=3000) -> None:
         """Initialization of the CRAB model.
@@ -140,6 +141,8 @@ class CRAB_Model(Model):
             ConsumptionGoodFirm: 1,
             ServiceFirm: 1
         }
+        # Discount factor for firms weighing adaptation decisions
+        self.DEU_DISCOUNT_FACTOR = deu_discount_factor
 
         # -- INITIALIZE AGENTS -- #
         # Agent control parameters
