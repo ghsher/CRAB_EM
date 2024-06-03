@@ -160,7 +160,7 @@ def CRAB_model_wrapper(
     out['Total Firm Debt'] = get_total_firm_debt(agent_dfs['Firms'])
     # TODO: Government debt/deficit
 
-    for key, val in out:
+    for key, val in out.items():
         if np.isnan(val).any():
             experiment_summary = {
                 'debt_sales_ratio' : debt_sales_ratio,
