@@ -243,7 +243,7 @@ class Household(CRAB_Agent):
         if self.adaptation["Elevation"]:
             flood_depth -= self.adaptation["Elevation"]
         # Get damage coefficient from flood depth
-        self.damage_coef = depth_to_damage("Residential", flood_depth)
+        self.damage_coef = min(0.98, depth_to_damage("Residential", flood_depth))
 
         # Reduce damage when wet- or dry_proofed
         if self.adaptation["Dry_proof"] and flood_depth < 1:
@@ -1232,7 +1232,7 @@ class CapitalFirm(Firm):
         # -- FLOOD SHOCK: compute damage coefficient -- #
         if self.model.flood_now:
             flood_depth = self.flood_depths[self.model.flood_return]
-            self.damage_coef = depth_to_damage("Industry", flood_depth)
+            self.damage_coef = min(0.98, depth_to_damage("Industry", flood_depth))
             # Reduce damage if adaptation measure has been taken
             if self.adaptation["Dry_proof"] and flood_depth < 1.5:
                 self.damage_coef -= (self.damage_coef *
@@ -1469,7 +1469,7 @@ class ConsumptionFirm(Firm):
         # -- FLOOD SHOCK: compute damage coefficient -- #
         if self.model.flood_now:
             flood_depth = self.flood_depths[self.model.flood_return]
-            self.damage_coef = depth_to_damage("Industry", flood_depth)
+            self.damage_coef = min(0.98, depth_to_damage("Industry", flood_depth))
             # Reduce damage if adaptation measure has been taken
             if self.adaptation["Dry_proof"] and flood_depth < 1.5:
                 self.damage_coef -= (self.damage_coef *
