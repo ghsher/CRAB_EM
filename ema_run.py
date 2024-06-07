@@ -23,6 +23,7 @@ from ema_workbench import (
     ReplicatorModel,
     RealParameter,
     IntegerParameter,
+    CategoricalParameter,
     Constant,
     TimeSeriesOutcome,
     SequentialEvaluator,
@@ -36,6 +37,7 @@ from ema_workbench.util import CaseError
 from model import CRAB_Model
 from CRAB_agents import *
 from ema_data_collection import *
+from pff_sampler import PartialFactorialSampler
 
 # Constants
 HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
@@ -183,12 +185,8 @@ if __name__ == "__main__":
     ema_logging.log_to_stderr(ema_logging.INFO, pass_root_logger_level=True) # Uncomment for MPI
     # Build up the EMA_workbench Model object
     model = Model("CRAB", function=CRAB_model_wrapper)
-    # model = ReplicatorModel("CRAB", function=CRAB_model_wrapper)
 
-    # 1. Assign number of replications:
-    # model.replications = N_REPLICATIONS
-
-    # 2. Define uncertainties & constant parameters:
+    # 1. Define uncertainties & constant parameters:
     model.uncertainties = [
         RealParameter("debt_sales_ratio", 0.8, 5),
         RealParameter("wage_sensitivity_prod", 0.0, 1.0),
@@ -198,13 +196,14 @@ if __name__ == "__main__":
         RealParameter("migration_unempl_bounds_diff", 0.10, 0.25),
         RealParameter("deu_discount_factor", 0.8, 1.0),
         IntegerParameter("flood_timing", 30, 90),
+        CategoricalParameter("seed", RANDOM_SEEDS, pff=True)
     ]
 
     model.constants = [
         Constant("flood_intensity", FLOOD_INTENSITIES[0][0]),
     ]
 
-    # 3. Define outcomes of interest to track
+    # 2. Define outcomes of interest to track
     outcomes = [
         TimeSeriesOutcome('Household Population'),
         TimeSeriesOutcome('Unemployment Rate'),
@@ -238,6 +237,7 @@ if __name__ == "__main__":
     # with SequentialEvaluator(model) as evaluator:
         results = evaluator.perform_experiments(
             scenarios=1,
+            uncertainty_sampling=PartialFactorialSampler()
         )
         
     save_results(results, "results/filename.tar.gz")
