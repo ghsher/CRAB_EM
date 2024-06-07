@@ -10,79 +10,45 @@ from ema_workbench import (
 )
 
 # Load data
-experiments, outcomes = load_results('../results/0409_100_runs.tar.gz')
+experiments, outcomes = load_results('../results/1k_run_0604.tar.gz')
 
 # Convert outcomes from ReplicatorModel-style to Model-style
-new_outcomes = {}
-for var in outcomes:
-    new_outcomes[var] = []
-    for a in outcomes[var]:
-        new_outcomes[var].append(list(a[0]))
-    outcomes[var] = np.array(new_outcomes[var])
+# new_outcomes = {}
+# for var in outcomes:
+#     new_outcomes[var] = []
+#     for a in outcomes[var]:
+#         new_outcomes[var].append(list(a[0]))
+#     outcomes[var] = np.array(new_outcomes[var])
 
 N_RUNS = len(outcomes['GDP'])
 N_STEPS = len(outcomes['GDP'][0])
 N_OUTCOMES = len(outcomes)
 
-# Combine data into one DF
-all_data = {}
-
-#  --> Experiment columns
-all_data['Run'] = []
-for input in experiments:
-    all_data[input] = []
-all_data['Step'] = []
-for i in range(N_RUNS):
-    for j in range(N_STEPS):
-        all_data['Run'].append(i)
-        for input in experiments:
-            all_data[input].append(experiments.loc[i, input])
-        all_data['Step'].append(j)
-#  --> Data columns
-for outcome, data in outcomes.items():
-    if outcome == 'TIME':
-        continue
-    all_data[outcome] = []
-    # print(data)
-    for run in data:
-        all_data[outcome] += [val for val in run]
-#  --> Make DF
-DATA = pd.DataFrame(all_data)
 
 # Get inputs (parameters) and outputs (KPIs)
 input_names = sorted(experiments.columns.tolist())
 outcome_names = [k for k in outcomes]
 # Ignore EMA columns
-# TODO: For now, also ignore flood_narrative bc it's handled by group_by. Can put in later
-for col in ['scenario', 'policy', 'model', 'flood_narrative']:
+for col in ['scenario', 'policy', 'model']:
     input_names.remove(col)
 
 # Get bounds for each input
-INPUT_MIN = {
-    'debt_sales_ratio' : 0.8,
-    'init_markup' : 0.05,
-    'wage_sensitivity_prod' : 0.0
-    # input : experiments[input].min()
-    # for input in input_names
-}
-INPUT_MAX = {
-    'debt_sales_ratio' : 5.0,
-    'init_markup' : 0.5,
-    'wage_sensitivity_prod' : 1.0
-    # input : experiments[input].max()
-    # for input in input_names
-}
+INPUT_MIN = {}
+INPUT_MAX = {}
+for col in input_names:
+    min_val = experiments[col].min()
+    max_val = experiments[col].max()
+    if experiments[col].dtype == np.int64:
+        INPUT_MIN[col] = min_val
+        INPUT_MAX[col] = max_val
+    else:
+        INPUT_MIN[col] = ((min_val*10**2)//1)/(10**2) # floor with precision
+        INPUT_MAX[col] = ((1+max_val*10**2)//1)/(10**2)
 
-# Get flood types and associate with colours
-COLORS = px.colors.qualitative.Plotly
-FLOODS = experiments['flood_narrative'].unique()
-FLOOD_COLOR_MAP = {flood : COLORS[i] for i, flood in enumerate(FLOODS)}
-FLOOD_NAME_MAP = {flood : 'ABCDEFGHIJK'[i] for i, flood in enumerate(FLOODS)}
-FLOOD_DASH_MAP = {1000:'solid', 100:'dash', 10:'dot'}
-
-# Clean up
-del all_data
-del experiments
+# Create dataframes for each outcome
+outcome_dfs = {}
+for outcome in outcomes:
+    outcome_dfs[outcome] = pd.DataFrame(outcomes[outcome])
 del outcomes
 
 # Create Viridis swatch
@@ -108,11 +74,6 @@ app.layout = html.Div([
                 className='header-title',
                 children='CRAB Exploratory Modeling Dashboard',
             )
-        ] + [
-            html.P(
-                className='header-sub',
-                children=f"{FLOOD_NAME_MAP[flood_string] + ': ' + flood_string}"
-            ) for flood_string in FLOODS
         ]
     ),
     html.Div(
@@ -121,15 +82,6 @@ app.layout = html.Div([
             html.Div(
                 className='col side', 
                 children=[
-                    html.Div(
-                        children=[
-                            html.H3(className='subtitle', children='Flood Handling'),
-                            dcc.RadioItems(options=['Combine', 'Group By', 'Separate'],
-                                        value='Combine',
-                                        id='flood-handling',
-                                        inline=True),
-                        ]
-                    ),
                     html.Div(
                         children=[
                             html.H3(className='subtitle', children='Outcomes'),
@@ -305,7 +257,6 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
 @callback(
     Output('graph-content', 'children'),
     Input('outcome-selector', 'value'),
-    Input('flood-handling', 'value'),
     Input('show-legend', 'value'),
     Input('show-inputs', 'value'),
     Input({'type' : 'input-bounds-store',
@@ -315,7 +266,8 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
            'index': ALL}, 'data'),
     Input('color-param', 'value'),
 )
-def update_graph(outcomes, flood_handling, show_legend, show_inputs, bounds_stores,
+def update_graph(outcomes,
+                 show_legend, show_inputs, bounds_stores,
                  highlight_mode, highlight_range_stores, color_param):
     # Quit early if no outcomes selected    
     if outcomes is None:
@@ -328,69 +280,29 @@ def update_graph(outcomes, flood_handling, show_legend, show_inputs, bounds_stor
     # Create appropriate graphs
     graphs = []
     for outcome in outcomes:
-        if flood_handling == 'Separate':
-            # Creating one plot per (outcome, flood type) pair
-            for flood_string in FLOODS:
-                # Create base graph with traces
-                fig = create_graph(
-                    DATA[DATA.flood_narrative == flood_string],
-                    outcome,
-                    title=f'{outcome} ({FLOOD_NAME_MAP[flood_string]})',
-                    show_legend=show_legend,
-                    show_inputs=show_inputs,
-                    input_bounds=bounds_stores,
-                    highlight_mode=highlight_mode,
-                    input_highlight_ranges=highlight_range_stores,
-                    color_param=color_param,
-                )
-
-                # Add vertical lines for each flood
-                flood_dict = {
-                    int(flood.split(':')[0].strip()) : int(flood.split(':')[1].strip())
-                    for flood in flood_string[1:-1].split(',')
-                }
-                for flood_time, flood_return in flood_dict.items():
-                    line_dash = FLOOD_DASH_MAP[flood_return]
-                    fig.add_vline(x=flood_time,
-                                  line_width=2,
-                                  line_dash=line_dash,
-                                  line_color="red")
-                
-                # Add graph to body
-                graphs.append(html.Div(
-                    children=dcc.Graph(
-                        id=f'{flood_string}-{outcome}-graph',
-                        figure=fig
-                    ),
-                    className='card'
-                ))
-        else:
-            # Creating one plot for whole outcome
-            group_by = (flood_handling == 'Group By')
-
-            # Create graph from traces
-            fig = create_graph(
-                DATA,
-                outcome,
-                group_by=group_by,
-                show_legend=show_legend,
-                show_inputs=show_inputs,
-                input_bounds=bounds_stores,
-                highlight_mode=highlight_mode,
-                input_highlight_ranges=highlight_range_stores,
-                color_param=color_param,
-            )
-            # Add graph to body
-            graphs.append(html.Div(
-                children=dcc.Graph(
-                    id=f'{outcome}-graph',
-                    figure=fig
-                ),
-                className='card'
-            ))
+        # Create graph from traces
+        fig = create_graph(
+            outcome,
+            # group_by=group_by,
+            show_legend=show_legend,
+            show_inputs=show_inputs,
+            input_bounds=bounds_stores,
+            highlight_mode=highlight_mode,
+            input_highlight_ranges=highlight_range_stores,
+            color_param=color_param,
+        )
+        # fig.write_image(f'../results/{outcome}.svg', scale=1.0, width=800, height=400)
+        # Add graph to body
+        graphs.append(html.Div(
+            children=dcc.Graph(
+                id=f'{outcome}-graph',
+                figure=fig
+            ),
+            className='card'
+        ))
     return graphs
 
-def create_graph(plot_data, outcome, group_by=False,
+def create_graph(outcome, group_by=False,
                  title=None, show_legend=False, show_inputs=False,
                  input_bounds=None, highlight_mode='Ranges',
                  input_highlight_ranges=None, color_param=None):
@@ -402,93 +314,68 @@ def create_graph(plot_data, outcome, group_by=False,
     })
     
     # Plot lines
-    first_run_handled = {flood:False for flood in FLOODS}
     for run in range(N_RUNS):
-        # Filter data to specific run
-        run_data = plot_data[plot_data.Run == run]
+        # Select outcome data
+        run_data = outcome_dfs[outcome].iloc[run, :]
 
         # Skip run if out of bounds
         skip = False
         for i, input in enumerate(input_names):
             # Extract bounds for this input
             bounds = input_bounds[i].split(':')
-
             # Extract experiment level for this input
-            level = run_data[input].max() 
-
+            level = experiments.loc[run, input] 
             # Compare (level OUTSIDE bounds ==> skip)
             if level < float(bounds[0]) or level > float(bounds[1]):
                 skip = True
+                break
         if skip:
             continue
 
-        # Handle adding traces based on flood_handling
-        # :: if 'Group By', need to colour categorically
-        if group_by:
-            # Identify current run's flood type
-            flood = run_data['flood_narrative'].tolist()[0]
-            # Add trace to figure, coloured according to group, and only
-            #  show the legend if it's the first run of its flood type
-            fig.add_trace(go.Scatter(
-                x=run_data.Step,
-                y=run_data[outcome],
-                line=dict(color=FLOOD_COLOR_MAP[flood], width=1),
-                name=f'Run {run}',
-                meta={input : run_data[input].max() for input in input_names},
-                hovertemplate=hover,
-                legendgroup=flood,
-                legendgrouptitle_text=FLOOD_NAME_MAP[flood],  
-                showlegend=(show_legend or not first_run_handled[flood]),
-            ))
-            # Update progress for legend handling
-            if not first_run_handled[flood]:
-                first_run_handled[flood] = True
-        # :: else, draw all lines as grey (TODO: add highlighting rules here)
-        else: 
-            # Determine line color
-            if highlight_mode == 'Ranges':
-                # Assume highlighting. If input outside the range, set to False
-                highlight = True
-                # If all ranges are same as input bounds, don't highlight
-                if input_highlight_ranges == input_bounds:
-                    highlight = False
-                else:
-                    for i, input in enumerate(input_names):
-                        # Extract highlight_range for this input
-                        highlight_range = input_highlight_ranges[i].split(':')
-                        # Extract experiment level for this input
-                        level = run_data[input].max() 
-                        # Compare (level OUTSIDE highlight range ==> don't highlight)
-                        if level < float(highlight_range[0]) or level > float(highlight_range[1]):
-                            highlight = False
-                # Determine line colour 
-                color = 'rgba(255,102,146,0.75)' if highlight else 'rgba(128,128,128,0.5)'
+        # Determine line color
+        if highlight_mode == 'Ranges':
+            highlight = True
+            # If all ranges are same as input bounds, don't highlight
+            if input_highlight_ranges == input_bounds:
+                highlight = False
             else:
-                if color_param is None:
-                    color = 'rgba(128,128,128,0.5)'
-                else: 
-                    min = INPUT_MIN[color_param]
-                    max = INPUT_MAX[color_param]
-                    level = run_data[color_param].max()
-                    fraction = (max - level) / (max - min)
-                    color = px.colors.sample_colorscale('viridis', fraction)[0]
-            # Create hover tooltip
-            hover = '%{y:.4f} @ t=%{x}'
-            if show_inputs:
-                hover += ''.join(['<br>'+i+': %{meta.'+i+':0.4f}' for i in input_names])
+                # Otherwise, if input outside the range, also don't highlight
+                for i, input in enumerate(input_names):
+                    # Extract highlight_range for this input
+                    highlight_range = input_highlight_ranges[i].split(':')
+                    # Extract experiment level for this input
+                    level = experiments.loc[run, input]
+                    # Compare (level OUTSIDE highlight range ==> don't highlight)
+                    if level < float(highlight_range[0]) or level > float(highlight_range[1]):
+                        highlight = False
+            color = 'rgba(255,102,146,0.325)' if highlight else 'rgba(128,128,128,0.15)'
+        elif highlight_mode == 'Parameter':
+            if color_param is None:
+                color = 'rgba(128,128,128,0.5)'
+            else: 
+                min = INPUT_MIN[color_param]
+                max = INPUT_MAX[color_param]
+                level = experiments.loc[run, color_param]
+                fraction = (max - level) / (max - min)
+                color = px.colors.sample_colorscale('viridis', fraction)[0]
 
-            # Add trace to figure
-            fig.add_trace(go.Scatter(
-                x=run_data.Step,
-                y=run_data[outcome],
-                line=dict(color=color, width=1),
-                name=f'Run {run}',
-                meta={input : run_data[input].max() for input in input_names},
-                hovertemplate=hover,
-                showlegend=show_legend,
-            ))
+        # Create hover tooltip to display input levels when hovering over a line
+        meta = {input : experiments.loc[run, input] for input in input_names}
+        hover = '%{y:.4f} @ t=%{x}'
+        if show_inputs:
+            hover += ''.join(['<br>'+i+': %{meta.'+i+':0.4f}' for i in input_names])
+
+        # Add trace to figure
+        fig.add_trace(go.Scatter(
+            x=run_data.index,
+            y=run_data.values,
+            line=dict(color=color, width=1),
+            name=f'Run {run}',
+            meta=meta,
+            hovertemplate=hover,
+            showlegend=show_legend,
+        ))
     return fig
-    # return px.line(outcomes_df, x='Step', y=outcome, line_group='Run', color='Run')
 
 if __name__ == '__main__':
     app.run(debug=True)
