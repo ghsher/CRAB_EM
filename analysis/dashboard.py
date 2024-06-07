@@ -1,6 +1,7 @@
 from dash import Dash, html, dcc, callback, Output, Input, State, MATCH, ALL, ctx
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.colors as pxc
 import pandas as pd
 import numpy as np
 import json 
@@ -10,7 +11,7 @@ from ema_workbench import (
 )
 
 # Load data
-experiments, outcomes = load_results('../results/1k_run_0604.tar.gz')
+experiments, outcomes = load_results('../results/1k_run_0604__with_clusters.tar.gz')
 
 # Convert outcomes from ReplicatorModel-style to Model-style
 # new_outcomes = {}
@@ -24,12 +25,25 @@ N_RUNS = len(outcomes['GDP'])
 N_STEPS = len(outcomes['GDP'][0])
 N_OUTCOMES = len(outcomes)
 
+# Categorical colours for cluster grouping
+HEX_COLORS = px.colors.qualitative.G10
+RGB_COLORS = []
+for color in HEX_COLORS:
+    r,g,b = pxc.hex_to_rgb(color)
+    RGB_COLORS.append(f'rgba({r}, {g}, {b}, 1)')
 
 # Get inputs (parameters) and outputs (KPIs)
 input_names = sorted(experiments.columns.tolist())
 outcome_names = [k for k in outcomes]
-# Ignore EMA columns
-for col in ['scenario', 'policy', 'model']:
+
+# Determine which outcomes were used for clustering:
+clustered_outputs = []
+for col in input_names: 
+    if 'Cluster' in col:
+        clustered_outputs.append(col)
+
+# Ignore EMA columns and cluster columns
+for col in ['scenario', 'policy', 'model'] + clustered_outputs:
     input_names.remove(col)
 
 # Get bounds for each input
@@ -148,7 +162,7 @@ app.layout = html.Div([
                     html.Div(
                         children=[
                             html.H3(className='subtitle', children='Parameter Highlighting'),
-                            dcc.RadioItems(options=['Ranges', 'Single Parameter'],
+                            dcc.RadioItems(options=['Ranges', 'Parameter', 'Clusters'],
                                         value='Ranges',
                                         id='highlighting-mode',
                                         inline=True),
@@ -161,6 +175,14 @@ app.layout = html.Div([
                                 ],
                                 hidden=True,
                                 id='color-param-wrapper',
+                            ),
+                            html.Div(
+                                children=[
+                                    dcc.Dropdown(options=clustered_outputs,
+                                                 id='cluster-var'),
+                                ],
+                                hidden=True,
+                                id='cluster-var-wrapper',
                             ), 
                             html.Div(
                                 children=[
@@ -218,14 +240,17 @@ app.layout = html.Div([
 
 @callback(
     Output('color-param-wrapper', 'hidden'),
+    Output('cluster-var-wrapper', 'hidden'),
     Output('param-ranges-wrapper', 'hidden'),
     Input('highlighting-mode', 'value'),
 )
 def toggle_highlighting_mode(mode):
-    if mode == 'Single Parameter':
-        return False, True
+    if mode == 'Parameter':
+        return False, True, True
+    if mode == 'Clusters':
+        return True, False, True
     else:
-        return True, False
+        return True, True, False
 
 @callback(
     Output({'type' : 'input-bounds-store',
@@ -259,16 +284,18 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
     Input('outcome-selector', 'value'),
     Input('show-legend', 'value'),
     Input('show-inputs', 'value'),
+    Input('highlighting-mode', 'value'),
+    Input('color-param', 'value'),
+    Input('cluster-var', 'value'),
     Input({'type' : 'input-bounds-store',
            'index': ALL}, 'data'),
-    Input('highlighting-mode', 'value'),
     Input({'type' : 'input-highlight-range-store',
            'index': ALL}, 'data'),
-    Input('color-param', 'value'),
 )
 def update_graph(outcomes,
-                 show_legend, show_inputs, bounds_stores,
-                 highlight_mode, highlight_range_stores, color_param):
+                 show_legend, show_inputs, highlight_mode,
+                 color_param, cluster_var,
+                 bounds_stores, highlight_range_stores):
     # Quit early if no outcomes selected    
     if outcomes is None:
         return []
@@ -283,13 +310,13 @@ def update_graph(outcomes,
         # Create graph from traces
         fig = create_graph(
             outcome,
-            # group_by=group_by,
             show_legend=show_legend,
             show_inputs=show_inputs,
-            input_bounds=bounds_stores,
             highlight_mode=highlight_mode,
-            input_highlight_ranges=highlight_range_stores,
             color_param=color_param,
+            cluster_var=cluster_var,
+            input_bounds=bounds_stores,
+            input_highlight_ranges=highlight_range_stores,
         )
         # fig.write_image(f'../results/{outcome}.svg', scale=1.0, width=800, height=400)
         # Add graph to body
@@ -302,10 +329,9 @@ def update_graph(outcomes,
         ))
     return graphs
 
-def create_graph(outcome, group_by=False,
-                 title=None, show_legend=False, show_inputs=False,
-                 input_bounds=None, highlight_mode='Ranges',
-                 input_highlight_ranges=None, color_param=None):
+def create_graph(outcome, title=None, show_legend=False, show_inputs=False,
+                 highlight_mode='Ranges', color_param=None, cluster_var=None,
+                 input_bounds=None, input_highlight_ranges=None):
     # Create figure
     if title is None:
         title = outcome
@@ -314,9 +340,14 @@ def create_graph(outcome, group_by=False,
     })
     
     # Plot lines
+    cluster_legendgroup_handled = {}
     for run in range(N_RUNS):
         # Select outcome data
         run_data = outcome_dfs[outcome].iloc[run, :]
+
+        ##########################
+        ### PARAMETER BOUNDING ###
+        ##########################
 
         # Skip run if out of bounds
         skip = False
@@ -332,7 +363,11 @@ def create_graph(outcome, group_by=False,
         if skip:
             continue
 
-        # Determine line color
+        ###################
+        ### LINE COLOUR ###
+        ###################
+
+        # Colour lines based on selected 'Highlighting Mode'
         if highlight_mode == 'Ranges':
             highlight = True
             # If all ranges are same as input bounds, don't highlight
@@ -348,10 +383,11 @@ def create_graph(outcome, group_by=False,
                     # Compare (level OUTSIDE highlight range ==> don't highlight)
                     if level < float(highlight_range[0]) or level > float(highlight_range[1]):
                         highlight = False
-            color = 'rgba(255,102,146,0.325)' if highlight else 'rgba(128,128,128,0.15)'
+            color = 'rgba(255,102,146,0.3)' if highlight else 'rgba(128,128,128,0.15)'
+
         elif highlight_mode == 'Parameter':
             if color_param is None:
-                color = 'rgba(128,128,128,0.5)'
+                color = 'rgba(128,128,128,0.15)'
             else: 
                 min = INPUT_MIN[color_param]
                 max = INPUT_MAX[color_param]
@@ -359,11 +395,44 @@ def create_graph(outcome, group_by=False,
                 fraction = (max - level) / (max - min)
                 color = px.colors.sample_colorscale('viridis', fraction)[0]
 
+        elif highlight_mode == 'Clusters':
+            if cluster_var is None:
+                color = 'rgba(128,128,128,0.15)'
+            else:
+                cluster = experiments.loc[run, cluster_var]
+                color = RGB_COLORS[cluster]
+
+        #####################
+        ### LINE METADATA ###
+        #####################
+
         # Create hover tooltip to display input levels when hovering over a line
         meta = {input : experiments.loc[run, input] for input in input_names}
         hover = '%{y:.4f} @ t=%{x}'
         if show_inputs:
             hover += ''.join(['<br>'+i+': %{meta.'+i+':0.4f}' for i in input_names])
+
+        # Decide whether to show legend for this trace
+        show_legend_trace = show_legend
+
+        # If grouping by clusters, create a group of traces in the plot's legend
+        legendgroup = None
+        legendgrouptitle = None
+        if highlight_mode == 'Clusters' and cluster_var is not None:
+            # Read cluster value
+            cluster = experiments.loc[run, cluster_var]
+            # Extend tooltip info
+            meta['cluster'] = cluster
+            hover += '<br>'+cluster_var.lower()+': %{meta.cluster}'
+            # Legend group == cluster
+            legendgroup = str(cluster)
+            # Give group descriptive name
+            legendgrouptitle = f"{cluster_var}: {cluster}"
+            # Only show legend for 1st run of a cluster
+            if cluster not in cluster_legendgroup_handled:
+                cluster_legendgroup_handled[cluster] = True
+            else:
+                show_legend_trace = False
 
         # Add trace to figure
         fig.add_trace(go.Scatter(
@@ -373,7 +442,9 @@ def create_graph(outcome, group_by=False,
             name=f'Run {run}',
             meta=meta,
             hovertemplate=hover,
-            showlegend=show_legend,
+            legendgroup=legendgroup,
+            legendgrouptitle_text=legendgrouptitle,  
+            showlegend=show_legend_trace,
         ))
     return fig
 

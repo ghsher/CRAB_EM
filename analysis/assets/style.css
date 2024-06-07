@@ -62,8 +62,9 @@ body {
 .rc-slider-tooltip-inner {
     background: none;
 }
-#color-param-wrapper {
+#color-param-wrapper, #cluster-var-wrapper {
     margin-top: 10px;
+    margin-bottom: 40px
 }
 
 /* Graph cards */
