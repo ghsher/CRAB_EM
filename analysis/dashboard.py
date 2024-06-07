@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc, callback, Output, Input, State, MATCH, ALL, ctx
+from dash import Dash, html, dcc, callback, Output, Input, State, Patch, MATCH, ALL, ctx
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.colors as pxc
@@ -292,7 +292,7 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
     Input({'type' : 'input-highlight-range-store',
            'index': ALL}, 'data'),
 )
-def update_graph(outcomes,
+def create_graphs(outcomes,
                  show_legend, show_inputs, highlight_mode,
                  color_param, cluster_var,
                  bounds_stores, highlight_range_stores):
@@ -308,7 +308,7 @@ def update_graph(outcomes,
     graphs = []
     for outcome in outcomes:
         # Create graph from traces
-        fig = create_graph(
+        fig = create_single_graph(
             outcome,
             show_legend=show_legend,
             show_inputs=show_inputs,
@@ -322,16 +322,16 @@ def update_graph(outcomes,
         # Add graph to body
         graphs.append(html.Div(
             children=dcc.Graph(
-                id=f'{outcome}-graph',
+                id={'type':'graph','index':outcome},
                 figure=fig
             ),
             className='card'
         ))
     return graphs
 
-def create_graph(outcome, title=None, show_legend=False, show_inputs=False,
-                 highlight_mode='Ranges', color_param=None, cluster_var=None,
-                 input_bounds=None, input_highlight_ranges=None):
+def create_single_graph(outcome, title=None, show_legend=False, show_inputs=False,
+                        highlight_mode='Ranges', color_param=None, cluster_var=None,
+                        input_bounds=None, input_highlight_ranges=None):
     # Create figure
     if title is None:
         title = outcome
@@ -423,7 +423,8 @@ def create_graph(outcome, title=None, show_legend=False, show_inputs=False,
             cluster = experiments.loc[run, cluster_var]
             # Extend tooltip info
             meta['cluster'] = cluster
-            hover += '<br>'+cluster_var.lower()+': %{meta.cluster}'
+            if show_inputs:
+                hover += '<br>'+cluster_var.lower()+': %{meta.cluster}'
             # Legend group == cluster
             legendgroup = str(cluster)
             # Give group descriptive name
