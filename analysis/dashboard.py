@@ -11,7 +11,9 @@ from ema_workbench import (
 )
 
 # Load data
+# experiments, outcomes = load_results('../results/10k_run_0605__with_clusters.tar.gz')
 experiments, outcomes = load_results('../results/1k_run_0604__with_clusters.tar.gz')
+# experiments, outcomes = load_results('../results/stochasticity_test_0607.tar.gz')
 
 # Convert outcomes from ReplicatorModel-style to Model-style
 # new_outcomes = {}
@@ -31,6 +33,9 @@ RGB_COLORS = []
 for color in HEX_COLORS:
     r,g,b = pxc.hex_to_rgb(color)
     RGB_COLORS.append(f'rgba({r}, {g}, {b}, 1)')
+PINK = 'rgba(247, 113, 137, 0.3)'
+ORANGE = 'rgba(213, 140, 50, 0.4)'
+GREY = 'rgba(128, 128, 128, 0.15)'
 
 # Get inputs (parameters) and outputs (KPIs)
 input_names = sorted(experiments.columns.tolist())
@@ -45,6 +50,8 @@ for col in input_names:
 # Ignore EMA columns and cluster columns
 for col in ['scenario', 'policy', 'model'] + clustered_outputs:
     input_names.remove(col)
+if 'seed' in input_names:
+    input_names.remove('seed')
 
 # Get bounds for each input
 INPUT_MIN = {}
@@ -180,6 +187,12 @@ app.layout = html.Div([
                                 children=[
                                     dcc.Dropdown(options=clustered_outputs,
                                                  id='cluster-var'),
+                                    dcc.RadioItems(
+                                        options=['All'],
+                                        value='All',
+                                        id='cluster-val',
+                                        inline=True
+                                    )
                                 ],
                                 hidden=True,
                                 id='cluster-var-wrapper',
@@ -280,6 +293,18 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
     
 
 @callback(
+    Output('cluster-val', 'value'),
+    Output('cluster-val', 'options'),
+    Input('cluster-var', 'value'),
+)
+def update_cluster_options(cluster_var):
+    if cluster_var is None:
+        return ('All', ['All'])
+    else:
+        num_clusters = experiments.nunique()[cluster_var]
+        return ('All', ['All'] + list(range(num_clusters)))
+    
+@callback(
     Output('graph-content', 'children'),
     Input('outcome-selector', 'value'),
     Input('show-legend', 'value'),
@@ -287,6 +312,7 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
     Input('highlighting-mode', 'value'),
     Input('color-param', 'value'),
     Input('cluster-var', 'value'),
+    Input('cluster-val', 'value'),
     Input({'type' : 'input-bounds-store',
            'index': ALL}, 'data'),
     Input({'type' : 'input-highlight-range-store',
@@ -294,7 +320,7 @@ def update_highlight_sliders(new_bounds, new_highlight_range):
 )
 def create_graphs(outcomes,
                  show_legend, show_inputs, highlight_mode,
-                 color_param, cluster_var,
+                 color_param, cluster_var, cluster_val,
                  bounds_stores, highlight_range_stores):
     # Quit early if no outcomes selected    
     if outcomes is None:
@@ -315,6 +341,7 @@ def create_graphs(outcomes,
             highlight_mode=highlight_mode,
             color_param=color_param,
             cluster_var=cluster_var,
+            cluster_val=cluster_val,
             input_bounds=bounds_stores,
             input_highlight_ranges=highlight_range_stores,
         )
@@ -330,7 +357,8 @@ def create_graphs(outcomes,
     return graphs
 
 def create_single_graph(outcome, title=None, show_legend=False, show_inputs=False,
-                        highlight_mode='Ranges', color_param=None, cluster_var=None,
+                        highlight_mode='Ranges', color_param=None,
+                        cluster_var=None, cluster_val=None,
                         input_bounds=None, input_highlight_ranges=None):
     # Create figure
     if title is None:
@@ -363,16 +391,19 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
         if skip:
             continue
 
-        ###################
-        ### LINE COLOUR ###
-        ###################
+        ##################
+        ### LINE STYLE ###
+        ##################
+
+        linestyle = dict(color=GREY, width=1)
 
         # Colour lines based on selected 'Highlighting Mode'
         if highlight_mode == 'Ranges':
-            highlight = True
+            # Assume highlighting
+            linestyle['color'] = PINK
             # If all ranges are same as input bounds, don't highlight
             if input_highlight_ranges == input_bounds:
-                highlight = False
+                linestyle['color'] = GREY
             else:
                 # Otherwise, if input outside the range, also don't highlight
                 for i, input in enumerate(input_names):
@@ -382,25 +413,28 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
                     level = experiments.loc[run, input]
                     # Compare (level OUTSIDE highlight range ==> don't highlight)
                     if level < float(highlight_range[0]) or level > float(highlight_range[1]):
-                        highlight = False
-            color = 'rgba(255,102,146,0.3)' if highlight else 'rgba(128,128,128,0.15)'
+                        linestyle['color'] = GREY
+                        break
 
         elif highlight_mode == 'Parameter':
-            if color_param is None:
-                color = 'rgba(128,128,128,0.15)'
-            else: 
+            if color_param is not None:
                 min = INPUT_MIN[color_param]
                 max = INPUT_MAX[color_param]
                 level = experiments.loc[run, color_param]
                 fraction = (max - level) / (max - min)
-                color = px.colors.sample_colorscale('viridis', fraction)[0]
+                linestyle['color'] = px.colors.sample_colorscale('viridis', fraction)[0]
 
         elif highlight_mode == 'Clusters':
-            if cluster_var is None:
-                color = 'rgba(128,128,128,0.15)'
-            else:
-                cluster = experiments.loc[run, cluster_var]
-                color = RGB_COLORS[cluster]
+            if cluster_var is not None:
+                if cluster_val is None:
+                    cluster = experiments.loc[run, cluster_var]
+                    linestyle['color'] = RGB_COLORS[cluster]
+                else: 
+                    cluster = experiments.loc[run, cluster_var]
+                    if cluster == cluster_val:
+                        # TODO: Add Z-ordering: main-layer and top-layer, add traces after loop.
+                        linestyle['color'] = ORANGE
+                        linestyle['width'] = 2
 
         #####################
         ### LINE METADATA ###
@@ -439,7 +473,7 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
         fig.add_trace(go.Scatter(
             x=run_data.index,
             y=run_data.values,
-            line=dict(color=color, width=1),
+            line=linestyle,
             name=f'Run {run}',
             meta=meta,
             hovertemplate=hover,
