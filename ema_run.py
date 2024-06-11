@@ -98,8 +98,8 @@ if __name__ == "__main__":
     ### RUN MODEL ###
     #################
 
-    # with MPIEvaluator(model) as evaluator:
-    with SequentialEvaluator(model) as evaluator: # left in for local testing
+    with MPIEvaluator(model) as evaluator:
+    # with SequentialEvaluator(model) as evaluator: # left in for local testing
         results = evaluator.perform_experiments(
             scenarios=scen_list,
         )
@@ -138,5 +138,5 @@ if __name__ == "__main__":
     results = experiments, outcomes
 
     DATE = datetime.now().strftime("%m%d")
-    filename = f"results/{N_SCENARIOS}_scen__{N_REPLICATIONS}_reps__{DATE}.tar.gz"
+    filename = f"results/{N_SCENARIOS}_scen__{N_REPLICATIONS}_reps__{STARTING_SEED}_startseed___{DATE}.tar.gz"
     save_results(results, filename)
