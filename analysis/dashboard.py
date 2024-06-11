@@ -446,6 +446,11 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
         if show_inputs:
             hover += ''.join(['<br>'+i+': %{meta.'+i+':0.4f}' for i in input_names])
 
+        # Handle presenting seeds in tooltip, for a seeded run
+        if 'seed' in experiments:
+            meta['seed'] = experiments.loc[run, 'seed']
+            hover += '<br>seed: %{meta.seed}'
+
         # Decide whether to show legend for this trace
         show_legend_trace = show_legend
 
