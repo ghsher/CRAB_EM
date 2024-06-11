@@ -80,10 +80,7 @@ def CRAB_model_wrapper(
         random_seed=seed)
     
     for _ in tqdm(range(steps), total=steps, leave=False,
-                  desc=f"MODEL RUN (DSR={debt_sales_ratio:.2}, WSP={wage_sensitivity_prod:.2}, " +
-                       f"MKP={init_markup:.2}, CAP={capital_firm_cap_out_ratio:.2}, " +
-                       f"EMPL={min_unempl_emigration:.2}->{(min_unempl_emigration+migration_unempl_bounds_diff):.2}, " +
-                       f"FLD={flood_intensity}@{flood_timing})"):
+                  desc=f"RUN (SEED={seed}, FLD={flood_intensity}@{flood_timing})"):
         model.step()
 
     model_df = model.datacollector.get_model_vars_dataframe()
@@ -178,7 +175,7 @@ def get_EMA_CRAB_model(flood_intensities=None, seeds=None, steps=None):
         RealParameter("min_unempl_emigration", 0.02, 0.08),
         RealParameter("migration_unempl_bounds_diff", 0.10, 0.25),
         RealParameter("deu_discount_factor", 0.8, 1.0),
-        IntegerParameter("flood_timing", 30, 90),
+        IntegerParameter("flood_timing", 30, 80),
     ]
 
     constants = []

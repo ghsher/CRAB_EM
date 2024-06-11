@@ -84,7 +84,8 @@ if __name__ == "__main__":
     )
 
     # Read Scenarios from CSV
-    scenarios = pd.read_csv('data/2_scenarios_0611.csv', index_col=False)
+    scenarios = pd.read_csv('data/2_scenarios_0611.csv', # XXX: Edit here
+                             index_col=False) 
     scen_list = []
     for idx, scen in scenarios.iterrows():
         scen_list.append(Scenario(idx, **scen))
