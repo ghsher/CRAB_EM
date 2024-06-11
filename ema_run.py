@@ -40,9 +40,9 @@ from ema_data_collection import *
 from pff_sampler import PartialFactorialSampler
 
 # Constants
-HH_ATTRIBUTES = pd.read_csv("Input/HH_attributes.csv", index_col=0)
-FIRM_ATTRIBUTES = pd.read_csv("Input/Firm_attributes.csv", index_col=0)
-PMT_WEIGHTS = pd.read_csv("Input/PMT_weights.csv", index_col=0)
+HH_ATTRIBUTES = pd.read_csv("data/HH_attributes.csv", index_col=0)
+FIRM_ATTRIBUTES = pd.read_csv("data/Firm_attributes.csv", index_col=0)
+PMT_WEIGHTS = pd.read_csv("data/PMT_weights.csv", index_col=0)
 
 MIGRATION = {"Regional": False, "RoW": True}
 CCA = {"Households": True, "Firms": True}
