@@ -85,6 +85,17 @@ VIRIDIS_FIG.update_layout({
     'margin' : {'b':10,'l':10,'r':10,'t':40},
 })
 
+# Map cluster : z-order by cluster size:
+CLUSTER_Z_MAP = {}
+for cluster_type in clustered_outputs:
+    CLUSTER_Z_MAP[cluster_type] = {}
+
+    cluster_counts = experiments[cluster_type].value_counts()
+    cluster_counts = cluster_counts.sort_values(ascending=False)
+
+    for z, cluster in enumerate(cluster_counts.index):
+        CLUSTER_Z_MAP[cluster_type][cluster] = z*10
+
 app = Dash(__name__)
 
 app.layout = html.Div([
@@ -367,7 +378,8 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
         'title' : go.layout.Title(text=title),
     })
     
-    # Plot lines
+    # Plot traces
+    traces = {}
     cluster_legendgroup_handled = {}
     for run in range(N_RUNS):
         # Select outcome data
@@ -391,19 +403,22 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
         if skip:
             continue
 
-        ##################
-        ### LINE STYLE ###
-        ##################
+        ###############################
+        ### LINE STYLE & Z-ORDERING ###
+        ###############################
 
         linestyle = dict(color=GREY, width=1)
+        z = 0
 
         # Colour lines based on selected 'Highlighting Mode'
         if highlight_mode == 'Ranges':
             # Assume highlighting
             linestyle['color'] = PINK
+            z = 10
             # If all ranges are same as input bounds, don't highlight
             if input_highlight_ranges == input_bounds:
                 linestyle['color'] = GREY
+                z = 0
             else:
                 # Otherwise, if input outside the range, also don't highlight
                 for i, input in enumerate(input_names):
@@ -414,6 +429,7 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
                     # Compare (level OUTSIDE highlight range ==> don't highlight)
                     if level < float(highlight_range[0]) or level > float(highlight_range[1]):
                         linestyle['color'] = GREY
+                        z = 0
                         break
 
         elif highlight_mode == 'Parameter':
@@ -426,15 +442,16 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
 
         elif highlight_mode == 'Clusters':
             if cluster_var is not None:
-                if cluster_val is None:
+                if cluster_val is None or cluster_val == 'All':
                     cluster = experiments.loc[run, cluster_var]
                     linestyle['color'] = RGB_COLORS[cluster]
+                    z = CLUSTER_Z_MAP[cluster_var][cluster]
                 else: 
                     cluster = experiments.loc[run, cluster_var]
                     if cluster == cluster_val:
                         # TODO: Add Z-ordering: main-layer and top-layer, add traces after loop.
                         linestyle['color'] = ORANGE
-                        linestyle['width'] = 2
+                        z = 10
 
         #####################
         ### LINE METADATA ###
@@ -474,18 +491,37 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
             else:
                 show_legend_trace = False
 
-        # Add trace to figure
-        fig.add_trace(go.Scatter(
-            x=run_data.index,
-            y=run_data.values,
-            line=linestyle,
-            name=f'Run {run}',
-            meta=meta,
-            hovertemplate=hover,
-            legendgroup=legendgroup,
-            legendgrouptitle_text=legendgrouptitle,  
-            showlegend=show_legend_trace,
-        ))
+        if z in traces:
+            traces[z].append(go.Scatter(
+                x=run_data.index,
+                y=run_data.values,
+                line=linestyle,
+                name=f'Run {run}',
+                meta=meta,
+                hovertemplate=hover,
+                legendgroup=legendgroup,
+                legendgrouptitle_text=legendgrouptitle,  
+                showlegend=show_legend_trace,
+            ))
+        else:
+            traces[z] = [go.Scatter(
+                x=run_data.index,
+                y=run_data.values,
+                line=linestyle,
+                name=f'Run {run}',
+                meta=meta,
+                hovertemplate=hover,
+                legendgroup=legendgroup,
+                legendgrouptitle_text=legendgrouptitle,  
+                showlegend=show_legend_trace,
+            )]
+    
+    # Add traces to figure in z-order
+    z_vals = sorted(traces.keys())
+    for z in z_vals:
+        for trace in traces[z]:
+            fig.add_trace(trace)
+
     return fig
 
 if __name__ == '__main__':
