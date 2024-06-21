@@ -23,9 +23,14 @@ experiments, outcomes = load_results('../results/1k_run_0604__with_clusters.tar.
 #         new_outcomes[var].append(list(a[0]))
 #     outcomes[var] = np.array(new_outcomes[var])
 
-N_RUNS = len(outcomes['GDP'])
-N_STEPS = len(outcomes['GDP'][0])
+N_RUNS = None
+N_STEPS = None
 N_OUTCOMES = len(outcomes)
+
+for key in outcomes:
+    N_RUNS = len(outcomes[key])
+    N_STEPS = len(outcomes[key][0])
+    break
 
 # Categorical colours for cluster grouping
 HEX_COLORS = px.colors.qualitative.G10
@@ -504,7 +509,7 @@ def create_single_graph(outcome, title=None, show_legend=False, show_inputs=Fals
                 showlegend=show_legend_trace,
             ))
         else:
-            traces[z] = [go.Scatter(
+            traces[z] = [go.Scattergl(
                 x=run_data.index,
                 y=run_data.values,
                 line=linestyle,
