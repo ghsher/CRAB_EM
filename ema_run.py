@@ -138,5 +138,5 @@ if __name__ == "__main__":
     results = experiments, outcomes
 
     DATE = datetime.now().strftime("%m%d")
-    filename = f"results/{N_SCENARIOS}_scen__{N_REPLICATIONS}_reps__{STARTING_SEED}_startseed___{DATE}.tar.gz"
+    filename = f"results/{N_SCENARIOS}_scen__{N_REPLICATIONS}_reps__{STARTING_SEED}_startseed__{DATE}.tar.gz"
     save_results(results, filename)
