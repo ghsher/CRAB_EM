@@ -11,12 +11,6 @@ experiments, outcomes = load_results(path+file_name+file_ext)
 
 oois = ['Household Population', 'GDP', 'Gini Coefficient']
 
-distances = {}
-for ooi in oois:
-    # Calculate TS distances
-    data = outcomes[ooi]
-    distances[ooi] = clusterer.calculate_cid(data)
-
 MIN_K = 2
 MAX_K = 21 
 all_clusters = {ooi:{} for ooi in oois}
@@ -24,6 +18,10 @@ explained_variances = {ooi:{} for ooi in oois}
 delta_EVs = {ooi:{} for ooi in oois}
 
 for ooi in oois:
+    # Calculate TS distances
+    data = outcomes[ooi]
+    distances = clusterer.calculate_cid(data)
+
     # Calculate overall centroid
     overall_centroid = outcomes[ooi].mean(axis=0)
 
@@ -37,7 +35,7 @@ for ooi in oois:
     prev_EV = 0
     for K in range(MIN_K, MAX_K): 
         # Compute clusters
-        all_clusters[ooi][K] = clusterer.apply_agglomerative_clustering(distances[ooi], n_clusters=K)
+        all_clusters[ooi][K] = clusterer.apply_agglomerative_clustering(distances, n_clusters=K)
 
         # Calculate within-cluster error (sum mean squared error)
         runs_by_cluster = [[] for clust in range(K)]
@@ -57,6 +55,9 @@ for ooi in oois:
 
         delta_EVs[ooi][K] = explained_variances[ooi][K] - prev_EV
         prev_EV = explained_variances[ooi][K]
+
+    # Save memory
+    del distances
 
 # Convert (Delta) Expected Variance data format
 index = [K for K in range(MIN_K, MAX_K)]
