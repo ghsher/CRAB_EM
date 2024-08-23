@@ -1,2 +1,6 @@
-# CRAB_model
-This repository contains an updated and restructured version of the Climate-economy Regional Agent-Based (CRAB) model developed by @TabernaA.
+# CRAB_EM
+This repository pertains to Gabriel Sher's MSc Thesis at the Delft University of Technology. It contains a forked version of the update Climate-economy Regional Agent-Based (CRAB) model developed by @TabernaA and @lizverbeek. It then adds an analysis layer using the philosophy of exploratory modeling. Specifically, scenario discovery (a decision-making under deep uncertainty method) is used to try to explain the model's state space and identify tipping points at the boundaries of its states.
+
+My additions lie mostly in the [analysis/](analysis/) folder, though some also in the root folder ([generate_scenarios.py](generate_scenarios.py), [ema_run.py](ema_run.py),  [ema_model.py](ema_model.py), and [ema_data_collection.py](ema_data_collection.py), plus some adaptations in the model and agent code to enable parametrization of the model.)
+
+To use, you might have to create an `img/` folder with a `png/` and `svg/` subfolder. You can adapt the `save_fig()` method in [analysis/plotting.py](analysis/plotting.py) to use a file structure that works better for you.
