@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -272,3 +274,16 @@ def plot_lines(
         
     return fig, axes
 
+def plot_name(title: str):
+    
+    DATE = datetime.now().strftime("%y%m%d_%H%M%S")
+    return '_'.join(title.lower().split(' ')) + '__' + DATE
+
+def save_fig(title: str, dir: str):
+    # Get formatted file name
+    title = plot_name(title)
+    # Format path
+    for format in ['png', 'svg']:
+        path = f'../img/{format}/{dir}/{title}.{format}' 
+
+        plt.savefig(path, dpi=300, format=format)
